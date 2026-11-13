@@ -1,0 +1,18 @@
+{
+  "host": {"uptime": 7200, "time": "2026-11-13 10:00:00", "fwversion": "XW.ar934x.v6.3.6.33330.210818.1529",
+           "hostname": "Yug-B", "netrole": "bridge", "devmodel": "NanoStation M5"},
+  "lan": {"status": [{"plugged": 1, "speed": 100, "duplex": 1}]},
+  "wireless": {
+    "mode": "sta", "essid": "YUG-LINK", "hide_essid": 0, "apmac": "00:27:22:11:22:33",
+    "countrycode": 643, "channel": 36, "frequency": "5180 MHz", "dfs": "0", "opmode": "11naht40",
+    "antenna": "Built in - 16 dBi", "chains": "2X2", "signal": -62, "rssi": 33, "noisef": -95,
+    "txpower": 20, "ack": 22, "distance": 1500, "ccq": 951, "txrate": "300", "rxrate": "270",
+    "security": "WPA2", "qos": "No QoS", "rstatus": 5, "count": 1, "chwidth": 40,
+    "chainrssi": [32, 34, 0], "chainrssimgmt": [32, 34, 0], "chainrssiext": [31, 33, 0],
+    "polling": {"enabled": 1, "quality": 91, "capacity": 74, "priority": 0, "noack": 0, "airsync_mode": 0}
+  },
+  "interfaces": [
+    {"ifname": "eth0", "hwaddr": "00:27:22:AA:BB:CC", "enabled": true,
+     "status": {"plugged": 1, "speed": 100, "duplex": 1}}
+  ]
+}
