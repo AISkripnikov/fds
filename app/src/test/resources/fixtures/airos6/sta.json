@@ -1,0 +1,10 @@
+[
+  {"mac": "00:27:22:11:22:33", "name": "Yug-A", "lastip": "192.168.1.30", "associd": 1, "aprepeater": 0,
+   "tx": 300, "rx": 270, "signal": -61, "rssi": 34, "chainrssi": [33, 35, 0], "rx_chainmask": 3,
+   "chainrssiext": [33, 35, 0], "idle": 0, "txpower": 20, "noisefloor": -95, "ccq": 952, "distance": 1500,
+   "uptime": 7100, "ack": 22,
+   "airmax": {"priority": 0, "quality": 90, "beam": 0, "signal": 0, "capacity": 73},
+   "remote": {"hostname": "Yug-A", "signal": -63, "tx_latency": 3}},
+  {"mac": "00:27:22:44:55:66", "lastip": "192.168.1.31", "tx": 65, "rx": 54, "signal": -78,
+   "noisefloor": -95, "ccq": 61, "distance": 900, "uptime": 120}
+]

@@ -1,9 +1,13 @@
 package com.airmaxfield.airos
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 /**
  * airOS 6.x: GET /login.cgi (cookie) → POST /login.cgi multipart (username, password, uri);
@@ -16,6 +20,7 @@ class AirOs6Client(
     private val http: OkHttpClient,
 ) : AirOsClient {
     override val version = AirOsVersion.V6
+    private val slowHttp by lazy { http.newBuilder().readTimeout(15, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).build() }
 
     override suspend fun login() {
         http.exec(Request.Builder().url(baseUrl.resolve("/login.cgi")!!).build())
@@ -34,30 +39,57 @@ class AirOs6Client(
         }
     }
 
-    private fun get(path: String) = Request.Builder().url(baseUrl.resolve(path)!!).build()
-
     private fun needsLogin(r: Resp) =
         r.code == 401 || r.code == 403 || r.redirectsToLogin || r.looksLikeLoginPage
 
-    private suspend fun fetch(path: String): Resp {
-        var r = http.exec(get(path))
+    private suspend fun fetch(path: String, client: OkHttpClient = http, post: FormBody? = null): Resp {
+        suspend fun once() = client.exec(
+            Request.Builder().url(baseUrl.resolve(path)!!).apply { if (post != null) post(post) }.build()
+        )
+        var r = once()
         if (needsLogin(r)) {
             login()
-            r = http.exec(get(path))
+            r = once()
             if (needsLogin(r)) throw AirOsError.Protocol("сессия не принимается")
         }
         return r
     }
 
+    private suspend fun fetchOk(path: String, client: OkHttpClient = http): String {
+        val r = fetch(path, client)
+        if (r.code !in 200..299) throw AirOsError.Protocol("$path: HTTP ${r.code}")
+        return r.body
+    }
+
     override suspend fun status(): DeviceStatus {
-        val r = fetch("/status.cgi")
-        if (r.code !in 200..299) throw AirOsError.Protocol("status.cgi: HTTP ${r.code}")
-        return StatusParser6.parse(r.body)
+        val body = fetchOk("/status.cgi")
+        return withContext(Dispatchers.Default) { StatusParser6.parse(body) }
+    }
+
+    override suspend fun stations(): List<StationInfo> {
+        val body = fetchOk("/sta.cgi")
+        return withContext(Dispatchers.Default) { StationsParser.fromSta6(body) }
+    }
+
+    override suspend fun survey(): List<SurveyEntry> {
+        val body = fetchOk("/survey.json.cgi?iface=ath0", slowHttp)
+        return withContext(Dispatchers.Default) { SurveyParser.parse(body) }
+    }
+
+    override suspend fun downloadConfig(): String {
+        val body = fetchOk("/cfg.cgi")
+        if (!ConfigBackup.looksLikeConfig(body)) throw AirOsError.Protocol("это не конфигурация")
+        return body
+    }
+
+    override suspend fun reboot() {
+        val r = fetch("/reboot.cgi", post = FormBody.Builder().add("reboot", "yes").build())
+        if (r.code !in 200..399) throw AirOsError.Protocol("перезагрузка: HTTP ${r.code}")
     }
 
     override suspend fun rawDump(): Map<String, String> {
         val out = linkedMapOf<String, String>()
-        for (p in listOf("/status.cgi", "/sta.cgi", "/signal.cgi")) {
+        for (p in listOf("/status.cgi", "/sta.cgi", "/signal.cgi", "/cfg.cgi")) {
             val r = runCatching { fetch(p) }.getOrNull() ?: continue
             if (r.code in 200..299) out[p] = r.body
         }

@@ -16,6 +16,14 @@ internal fun parseRoot(json: String): JsonObject = try {
     throw AirOsError.Protocol("не JSON")
 }
 
+internal fun parseArray(json: String): JsonArray = try {
+    Json.parseToJsonElement(json) as? JsonArray ?: throw AirOsError.Protocol("ожидался список")
+} catch (e: AirOsError) {
+    throw e
+} catch (e: Exception) {
+    throw AirOsError.Protocol("не JSON")
+}
+
 internal fun JsonObject.obj(key: String): JsonObject? = this[key] as? JsonObject
 internal fun JsonObject.arr(key: String): JsonArray? = this[key] as? JsonArray
 internal fun JsonObject.str(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull

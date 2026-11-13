@@ -1,0 +1,8 @@
+[
+  {"mac": "24:5A:4C:00:00:01", "quality": "40/94", "signal_level": -80, "noise_level": -95, "essid": "Neighbor-1",
+   "frequency": "5.18", "channel": 36, "encryption": "WPA2", "ieee_mode": "11naht40"},
+  {"mac": "24:5A:4C:00:00:02", "signal_level": -55, "noise_level": -95, "essid": "SEVER-LINK",
+   "frequency": "5.18", "channel": 36, "encryption": "WPA2", "ieee_mode": "11acvht40"},
+  {"mac": "24:5A:4C:00:00:03", "signal_level": -70, "noise_level": -94, "essid": "",
+   "frequency": 5745, "channel": 149, "security": "none"}
+]
