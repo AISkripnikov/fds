@@ -35,6 +35,10 @@ private suspend fun connectWith(base: HttpUrl, user: String, pass: String, http:
             .post(FormBody.Builder().add("username", user).add("password", pass).build())
             .build()
     )
+    // Редирект с http на https — это не airOS 6, а проблема с https (старый TLS, таймаут).
+    if (probe.code in 300..399 && probe.location?.startsWith("https", ignoreCase = true) == true) {
+        throw AirOsError.Unreachable(java.io.IOException("пушка требует https, а https-соединение не удалось"))
+    }
     return when {
         probe.code in 200..299 -> AirOs8Client(base, user, pass, http).also { it.adoptLogin(probe.csrf) }
         probe.code == 401 || probe.code == 403 -> throw AirOsError.BadCredentials()

@@ -24,7 +24,12 @@ data class StatusUi(
     val error: AirOsError? = null,
     /** true после BadCredentials — опрос остановлен. */
     val stopped: Boolean = false,
+    /** Время (clock) последнего успешного опроса — для расчёта «нет данных N с» в UI по тикеру. */
+    val lastOkAt: Long? = null,
 )
+
+/** Сколько целых секунд нет свежих данных; null — данных ещё не было. */
+fun staleSeconds(lastOkAt: Long?, now: Long): Int? = lastOkAt?.let { ((now - it) / 1000).toInt().coerceAtLeast(0) }
 
 /** Опрашивает пушку раз в [periodMs]; при ошибке сохраняет последний статус. */
 class StatusPoller(
@@ -61,7 +66,7 @@ class StatusPoller(
                 ui.copy(
                     status = s,
                     history = s.signalDbm?.let { (ui.history + it).takeLast(HISTORY) } ?: ui.history,
-                    secondsSinceUpdate = 0, error = null,
+                    secondsSinceUpdate = 0, error = null, lastOkAt = lastOkAt,
                 )
             }
         } catch (e: CancellationException) {

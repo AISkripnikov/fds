@@ -40,6 +40,12 @@ class AirOsConnectorTest {
         try { go(); fail() } catch (e: AirOsError.BadCredentials) { }
     }
 
+    @Test fun redirect_to_https_is_not_airos6() = runTest {
+        server.enqueue(MockResponse().setResponseCode(302).addHeader("Location", "https://127.0.0.1/login.cgi"))
+        try { go(); fail("expected transport error") } catch (e: AirOsError.Unreachable) { }
+        assertEquals(1, server.requestCount)
+    }
+
     @Test fun falls_back_to_http() = runTest {
         // Сервер без TLS: https-рукопожатие падает, коннектор пробует http.
         server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))

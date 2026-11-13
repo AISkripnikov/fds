@@ -26,4 +26,18 @@ class DiagDumpTest {
         assertTrue(files["meta.txt"]!!.contains("model: NanoStation M5"))
         files.values.forEach { assertFalse(it.contains("secret")) }
     }
+
+    @Test fun response_bodies_are_redacted() {
+        val cfg = "users.1.name=ubnt\nusers.1.password=\$1\$hash\nwpasupplicant.profile.1.network.1.psk=MyWifiKey\n" +
+            "snmp.community=public\nradio.1.freq=5180\n"
+        val json = """{"essid":"LINK","wpa_psk":"MyWifiKey","nested":{"password":"pw1"},"signal":-58}"""
+        val out = ByteArrayOutputStream()
+        DiagDump.buildZip(mapOf("/getcfg.sh" to cfg, "/status.cgi" to json), emptyMap(), out)
+        val all = ZipInputStream(ByteArrayInputStream(out.toByteArray())).use { z ->
+            buildString { while (z.nextEntry != null) append(z.readBytes().decodeToString()).append('\n') }
+        }
+        listOf("\$1\$hash", "MyWifiKey", "public", "pw1").forEach { assertFalse("leaked $it", all.contains(it)) }
+        assertTrue(all.contains("radio.1.freq=5180")); assertTrue(all.contains("users.1.name=ubnt"))
+        assertTrue(all.contains("\"signal\":-58")); assertTrue(all.contains("\"essid\":\"LINK\""))
+    }
 }

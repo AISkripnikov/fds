@@ -74,6 +74,22 @@ class StatusPollerTest {
         assertEquals(1, c.calls)
     }
 
+    @Test fun exposes_last_ok_time_for_staleness() = runTest {
+        val fail = { throw AirOsError.Unreachable(null) }
+        val c = Scripted(mutableListOf(ok(-60), ok(-59), fail))
+        val p = poller(c); p.start()
+        runCurrent(); advanceTimeBy(1000); runCurrent()
+        assertEquals(1000L, p.state.value.lastOkAt)
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(1000L, p.state.value.lastOkAt)
+    }
+
+    @Test fun stale_seconds() {
+        assertEquals(null, staleSeconds(null, 5000))
+        assertEquals(0, staleSeconds(5000, 5900))
+        assertEquals(3, staleSeconds(5000, 8100))
+    }
+
     @Test fun demo_client_signal_varies_in_range() = runTest {
         val d = DemoClient()
         val values = (1..100).map { d.status().signalDbm!! }

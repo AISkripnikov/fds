@@ -53,8 +53,12 @@ import com.airmaxfield.ui.components.StatusDot
 import com.airmaxfield.ui.devices.ConnectSheet
 import com.airmaxfield.ui.devices.ConnectTarget
 import com.airmaxfield.ui.devices.DevicesScreen
+import androidx.compose.runtime.produceState
 import com.airmaxfield.ui.status.AlignmentTone
+import com.airmaxfield.ui.status.STALE_AFTER_SEC
 import com.airmaxfield.ui.status.StatusScreen
+import com.airmaxfield.ui.status.staleSeconds
+import kotlinx.coroutines.delay
 import com.airmaxfield.ui.theme.AirmaxTheme
 import com.airmaxfield.ui.theme.LocalAirColors
 
@@ -134,6 +138,8 @@ private fun DevicesRoot(vm: AppViewModel) {
     var target by remember { mutableStateOf<ConnectTarget?>(null) }
 
     LaunchedEffect(Unit) { vm.refreshNetworks() }
+    val pending by vm.pendingTarget.collectAsState()
+    LaunchedEffect(pending) { pending?.let { vm.clearConnectError(); target = it; vm.pendingTargetTaken() } }
 
     Scaffold(containerColor = c.bg, topBar = {
         TopBar("airMAX Поле", "Выберите пушку", nav = null, menu = { ThemeMenu(vm) })
@@ -169,11 +175,17 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
     val tone = remember { AlignmentTone(ctx) }
     DisposableEffect(Unit) { onDispose { tone.release() } }
     LaunchedEffect(toneOn) { tone.setEnabled(toneOn) }
-    LaunchedEffect(ui.status?.signalDbm, ui.secondsSinceUpdate) {
-        tone.update(if (ui.secondsSinceUpdate > 2) null else ui.status?.signalDbm)
+    // Тикер: «нет данных N с» считается каждую секунду, даже пока запрос висит в таймауте.
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { delay(500); value = System.currentTimeMillis() }
+    }
+    val stale = staleSeconds(ui.lastOkAt, now)
+    val fresh = stale != null && stale <= STALE_AFTER_SEC
+    LaunchedEffect(ui.status?.signalDbm, fresh) {
+        tone.update(if (fresh) ui.status?.signalDbm else null)
     }
 
-    val connected = ui.error == null && ui.status != null
+    val connected = fresh && ui.status != null
     val subtitle = listOfNotNull(ui.status?.model, s.host.takeIf { !s.demo }).joinToString(" · ").ifEmpty { s.host }
     Scaffold(
         containerColor = c.bg,
@@ -185,7 +197,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 menu = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatusDot(connected)
-                        Text(if (connected) " на связи" else if (ui.status == null) " подключение" else " нет данных ${ui.secondsSinceUpdate} с",
+                        Text(if (connected) " на связи" else if (ui.status == null) " подключение" else " нет данных ${stale ?: 0} с",
                             color = c.muted, fontSize = 13.sp)
                         ThemeMenu(vm) { close ->
                             DropdownMenuItem(text = { Text("Сохранить диагностический дамп") }, onClick = { close(); onSaveDump(s) })
@@ -210,7 +222,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
         },
     ) { pad ->
         if (tab == 0) {
-            StatusScreen(ui, toneOn, { toneOn = it }, onRetry = vm::resumePolling, onSaveDump = { onSaveDump(s) },
+            StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
                 modifier = Modifier.padding(pad))
         } else {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {

@@ -40,9 +40,10 @@ import com.airmaxfield.ui.theme.snrQuality
 @Composable
 fun StatusScreen(
     ui: StatusUi,
+    staleSec: Int?,
     toneOn: Boolean,
     onToneToggle: (Boolean) -> Unit,
-    onRetry: () -> Unit,
+    onEditPassword: () -> Unit,
     onSaveDump: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -52,7 +53,7 @@ fun StatusScreen(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ErrorBanner(ui, onRetry, onSaveDump)
+        ErrorBanner(ui, staleSec, onEditPassword, onSaveDump)
         SignalCard(s)
         TileGrid(s)
         SignalGraph(ui.history)
@@ -110,19 +111,22 @@ private fun Summary(s: DeviceStatus?) {
 }
 
 @Composable
-private fun ErrorBanner(ui: StatusUi, onRetry: () -> Unit, onSaveDump: () -> Unit) {
-    val e = ui.error ?: return
+private fun ErrorBanner(ui: StatusUi, staleSec: Int?, onEditPassword: () -> Unit, onSaveDump: () -> Unit) {
+    val e = ui.error
+    val stale = staleSec != null && staleSec > STALE_AFTER_SEC
+    if (e == null && !stale) return
     val c = LocalAirColors.current
     AirCard(Modifier.fillMaxWidth()) {
         val text = when {
             e is AirOsError.BadCredentials -> "Неверный логин или пароль. Опрос остановлен."
-            e is AirOsError.Unreachable -> "Нет данных ${ui.secondsSinceUpdate} с — пушка не отвечает. Продолжаю опрос."
+            e == null || e is AirOsError.Unreachable ->
+                "Нет данных ${staleSec ?: 0} с — пушка не отвечает. Продолжаю опрос."
             else -> e.message ?: "Ошибка"
         }
-        Text(text, color = if (e is AirOsError.Unreachable) c.fair else c.bad, fontSize = 15.sp)
+        Text(text, color = if (e == null || e is AirOsError.Unreachable) c.fair else c.bad, fontSize = 15.sp)
         if (ui.stopped || e is AirOsError.Protocol) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                if (ui.stopped) Button(onClick = onRetry) { Text("Повторить") }
+                if (ui.stopped) Button(onClick = onEditPassword) { Text("Изменить пароль") }
                 if (e is AirOsError.Protocol) Button(onClick = onSaveDump,
                     colors = ButtonDefaults.buttonColors(containerColor = c.line, contentColor = c.text)) {
                     Text("Сохранить дамп")
@@ -131,6 +135,9 @@ private fun ErrorBanner(ui: StatusUi, onRetry: () -> Unit, onSaveDump: () -> Uni
         }
     }
 }
+
+/** Данные старше этого считаются устаревшими: «нет данных», звук юстировки молчит. */
+const val STALE_AFTER_SEC = 2
 
 fun modeName(m: String?): String = when (m) {
     null -> DASH
@@ -163,7 +170,7 @@ private fun StatusPreview() {
                         airmaxCapacity = 78, txRateMbps = 520.0, rxRateMbps = 480.0, uptimeSec = 90000, distanceM = 2400),
                     history = (0 until 60).map { -65 + it / 6 },
                 ),
-                toneOn = false, onToneToggle = {}, onRetry = {}, onSaveDump = {},
+                staleSec = 0, toneOn = false, onToneToggle = {}, onEditPassword = {}, onSaveDump = {},
             )
         }
     }
