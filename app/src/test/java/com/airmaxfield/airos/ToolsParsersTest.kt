@@ -47,6 +47,15 @@ class ToolsParsersTest {
         assertEquals("192-168-1-21_20261113-0930.cfg", ConfigBackup.fileName(null, "192.168.1.21", at))
     }
 
+    @Test fun backup_belongs_only_to_exact_host() {
+        val at = Calendar.getInstance().time
+        val f20 = ConfigBackup.fileName("Sever-A", "192.168.1.20", at)
+        val f2 = ConfigBackup.fileName(null, "192.168.1.2", at)
+        assertTrue(ConfigBackup.belongsTo(f20, "192.168.1.20")); assertFalse(ConfigBackup.belongsTo(f20, "192.168.1.2"))
+        assertTrue(ConfigBackup.belongsTo(f2, "192.168.1.2")); assertFalse(ConfigBackup.belongsTo(f2, "192.168.1.20"))
+        assertTrue(ConfigBackup.belongsTo(ConfigBackup.fileName("x", "демо", at), "демо"))
+    }
+
     @Test fun backup_store_roundtrip() {
         val store = BackupStore(tmp.root)
         val a = store.save("a.cfg", "x=1"); Thread.sleep(20)

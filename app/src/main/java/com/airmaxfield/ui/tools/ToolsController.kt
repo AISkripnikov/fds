@@ -10,6 +10,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,12 +54,13 @@ class ToolsController(
     private val _tools = MutableStateFlow(ToolsUi())
     val tools: StateFlow<ToolsUi> = _tools.asStateFlow()
     private var stationsJob: Job? = null
-
-    private val hostToken = host.replace('.', '-')
+    /** Все задачи сессии — дочерние; close() отменяет и отложенные (перезагрузку, обзор). */
+    private val job = SupervisorJob(scope.coroutineContext[Job])
+    private val cs = scope + job
 
     fun startStations() {
         if (stationsJob?.isActive == true) return
-        stationsJob = scope.launch {
+        stationsJob = cs.launch {
             while (isActive) {
                 try {
                     _stations.value = StationsUi(client.stations(), null)
@@ -74,7 +77,7 @@ class ToolsController(
     fun runSurvey() {
         if (_survey.value.running) return
         _survey.value = _survey.value.copy(running = true, error = null, canRetry = false)
-        scope.launch {
+        cs.launch {
             try {
                 _survey.value = SurveyUi(entries = client.survey())
             } catch (e: CancellationException) { throw e } catch (e: AirOsError.Unreachable) {
@@ -89,13 +92,13 @@ class ToolsController(
     }
 
     fun refreshBackups() {
-        _tools.update { t -> t.copy(backups = store?.list().orEmpty().filter { hostToken in it.name }) }
+        _tools.update { t -> t.copy(backups = store?.list().orEmpty().filter { ConfigBackup.belongsTo(it.name, host) }) }
     }
 
     fun saveConfig() {
         if (store == null) { message("Хранилище недоступно"); return }
         _tools.update { it.copy(busy = "Скачиваю конфигурацию…") }
-        scope.launch {
+        cs.launch {
             try {
                 val text = client.downloadConfig()
                 val f = withContext(Dispatchers.IO) { store.save(ConfigBackup.fileName(hostname(), host, Date()), text) }
@@ -113,7 +116,7 @@ class ToolsController(
 
     fun reboot() {
         _tools.update { it.copy(busy = "Отправляю команду перезагрузки…") }
-        scope.launch {
+        cs.launch {
             try {
                 client.reboot()
                 message("Пушка перезагружается. Связь вернётся примерно через минуту.")
@@ -130,5 +133,5 @@ class ToolsController(
 
     fun message(text: String?) = _tools.update { it.copy(message = text) }
 
-    fun close() = stopStations()
+    fun close() { stopStations(); job.cancel() }
 }

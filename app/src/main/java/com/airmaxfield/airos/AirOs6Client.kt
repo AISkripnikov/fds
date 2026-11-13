@@ -83,13 +83,19 @@ class AirOs6Client(
     }
 
     override suspend fun reboot() {
-        val r = fetch("/reboot.cgi", post = FormBody.Builder().add("reboot", "yes").build())
+        suspend fun once() = http.exec(
+            Request.Builder().url(baseUrl.resolve("/reboot.cgi")!!)
+                .post(FormBody.Builder().add("reboot", "yes").build()).build()
+        )
+        var r = once()
+        if (r.code == 401 || r.code == 403) { login(); r = once() }
         if (r.code !in 200..399) throw AirOsError.Protocol("перезагрузка: HTTP ${r.code}")
     }
 
     override suspend fun rawDump(): Map<String, String> {
         val out = linkedMapOf<String, String>()
-        for (p in listOf("/status.cgi", "/sta.cgi", "/signal.cgi", "/cfg.cgi")) {
+        // Конфигурацию (пароли, ключи) в дамп не включаем.
+        for (p in listOf("/status.cgi", "/sta.cgi", "/signal.cgi")) {
             val r = runCatching { fetch(p) }.getOrNull() ?: continue
             if (r.code in 200..299) out[p] = r.body
         }

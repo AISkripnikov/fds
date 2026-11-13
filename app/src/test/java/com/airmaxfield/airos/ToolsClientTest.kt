@@ -46,6 +46,27 @@ class ToolsClientTest {
         assertEquals("POST", r.method); assertEquals("/reboot.cgi", r.path); assertTrue(r.body.readUtf8().contains("reboot=yes"))
     }
 
+    @Test fun reboot_html_page_mentioning_login_is_success() = runTest {
+        val c = v8()
+        server.enqueue(MockResponse().setBody("<html>Rebooting... <a href=\"/login.cgi\">login</a></html>"))
+        c.reboot()
+        assertEquals(2, server.requestCount) // вход + один POST, без повторного входа и повтора
+        val c6 = v6()
+        server.enqueue(MockResponse().setBody("<html>Rebooting, please <a href=/login.cgi>login</a></html>"))
+        c6.reboot()
+    }
+
+    @Test fun dump_never_contains_config() = runTest {
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest) =
+                MockResponse().addHeader("X-CSRF-ID", "abc").setBody(if (request.path == "/api/auth") "{}" else "x=1")
+        }
+        val c8 = AirOs8Client(server.url("/"), "ubnt", "pw", http).also { it.login() }
+        val c6 = AirOs6Client(server.url("/"), "ubnt", "pw", http)
+        val keys = c8.rawDump().keys + c6.rawDump().keys
+        assertTrue(keys.none { "cfg" in it }); assertTrue(keys.contains("/status.cgi"))
+    }
+
     @Test fun v8_config_falls_back_to_cfg_cgi() = runTest {
         val c = v8()
         server.enqueue(MockResponse().setResponseCode(404)); server.enqueue(MockResponse().setBody(cfg))
