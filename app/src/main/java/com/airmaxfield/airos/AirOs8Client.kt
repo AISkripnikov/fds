@@ -28,6 +28,9 @@ class AirOs8Client(
         csrf = r.csrf
     }
 
+    /** Вход уже выполнен коннектором при определении версии — запомнить токен. */
+    internal fun adoptLogin(csrfToken: String?) { csrf = csrfToken }
+
     private fun get(path: String) = Request.Builder().url(baseUrl.resolve(path)!!)
         .apply { csrf?.let { header("X-CSRF-ID", it) } }.build()
 
