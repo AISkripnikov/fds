@@ -149,6 +149,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearConnectError() { _connect.value = ConnectState.Idle }
 
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast.asStateFlow()
+    fun toastShown() { _toast.value = null }
+
+    /** Снимает ответы пушки и пишет zip в выбранный пользователем файл. */
+    fun writeDump(uri: android.net.Uri, s: Session) {
+        viewModelScope.launch {
+            try {
+                val dump = s.client.rawDump()
+                val st = s.poller.state.value.status
+                val meta = linkedMapOf(
+                    "app" to "airMAX Поле ${com.airmaxfield.BuildConfig.VERSION_NAME}",
+                    "time" to java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()),
+                    "host" to s.host,
+                    "airos" to s.client.version.name,
+                    "model" to (st?.model ?: "?"),
+                    "firmware" to (st?.firmware ?: "?"),
+                )
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use {
+                        com.airmaxfield.diag.DiagDump.buildZip(dump, meta, it)
+                    } ?: error("не удалось открыть файл")
+                }
+                _toast.value = "Дамп сохранён (${dump.size} ответов)"
+            } catch (e: Exception) {
+                _toast.value = "Не удалось сохранить дамп: ${e.message}"
+            }
+        }
+    }
+
     fun deleteDevice(id: String) { store?.delete(id); _devices.value = store?.all().orEmpty() }
 
     override fun onCleared() {

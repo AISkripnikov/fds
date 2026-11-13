@@ -1,5 +1,7 @@
 package com.airmaxfield.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,8 +69,24 @@ private val TABS = listOf(
 )
 
 @Composable
-fun AirmaxApp(onSaveDump: (Session) -> Unit, vm: AppViewModel = viewModel()) {
+fun AirmaxApp(vm: AppViewModel = viewModel()) {
     val light by vm.lightTheme.collectAsState()
+    val ctx = LocalContext.current
+    var dumpFor by remember { mutableStateOf<Session?>(null) }
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val s = dumpFor
+        if (uri != null && s != null) vm.writeDump(uri, s)
+        dumpFor = null
+    }
+    val onSaveDump: (Session) -> Unit = { s ->
+        dumpFor = s
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
+        saver.launch("airmax-dump-${s.host.replace('.', '-')}-$stamp.zip")
+    }
+    val toast by vm.toast.collectAsState()
+    LaunchedEffect(toast) {
+        toast?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); vm.toastShown() }
+    }
     AirmaxTheme(dark = !light) {
         val session by vm.session.collectAsState()
         val s = session
