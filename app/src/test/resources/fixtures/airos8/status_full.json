@@ -1,0 +1,20 @@
+{
+  "chain_names": [{"number": 1, "name": "Chain 0"}, {"number": 2, "name": "Chain 1"}],
+  "host": {"hostname": "Sever-A", "device_id": "x", "uptime": 86400, "power_time": 86400,
+           "fwversion": "v8.7.11", "devmodel": "NanoStation 5AC loco", "netrole": "bridge"},
+  "interfaces": [{"ifname": "eth0", "enabled": true, "status": {"plugged": true, "speed": 100, "duplex": true}}],
+  "wireless": {
+    "essid": "SEVER-LINK", "mode": "ap-ptp", "ieeemode": "11ACVHT40", "band": 2,
+    "frequency": 5180, "center1_freq": 5190, "chanbw": 40, "txpower": 20, "distance": 2400,
+    "noisef": -92, "count": 1,
+    "throughput": {"tx": 1200, "rx": 3400},
+    "sta": [{
+      "mac": "24:5A:4C:AA:BB:CC", "lastip": "192.168.1.21",
+      "signal": -58, "rssi": 34, "noisefloor": -92, "chainrssi": [33, 31, 0],
+      "tx_latency": 2, "distance": 2400, "uptime": 3600,
+      "tx_rate": 520.0, "rx_rate": 480.0,
+      "airmax": {"quality": 96, "capacity": 78, "downlink_capacity": 520000, "uplink_capacity": 480000},
+      "remote": {"hostname": "Sever-B", "signal": -60, "chainrssi": [32, 30, 0], "noisefloor": -93}
+    }]
+  }
+}
