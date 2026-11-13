@@ -39,6 +39,7 @@ class Session(
     val demo: Boolean,
     val user: String = "ubnt",
     val http: OkHttpClient? = null,
+    val tools: com.airmaxfield.ui.tools.ToolsController,
 )
 
 sealed interface ConnectState {
@@ -49,6 +50,20 @@ sealed interface ConnectState {
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = AppPrefs(app)
+    private val backups = runCatching { com.airmaxfield.data.BackupStore(java.io.File(app.filesDir, "backups")) }.getOrNull()
+
+    /** Экспорт резервной копии в выбранный пользователем файл. */
+    fun exportBackup(uri: android.net.Uri, f: java.io.File) {
+        viewModelScope.launch {
+            val ok = runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { it.write(f.readBytes()) }
+                        ?: error("не удалось открыть файл")
+                }
+            }
+            _toast.value = if (ok.isSuccess) "Копия экспортирована" else "Не удалось экспортировать: ${ok.exceptionOrNull()?.message}"
+        }
+    }
     // Если ключ шифрования потерян (восстановление/перенос телефона) — файл не расшифровать:
     // удаляем его и создаём заново, иначе сохранение пушек пропало бы навсегда.
     private val store = runCatching { DeviceStore(app) }.getOrNull()
@@ -158,8 +173,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         user: String = "ubnt", http: OkHttpClient? = null,
     ) {
         closeSession()
-        val poller = StatusPoller(client, viewModelScope)
-        _session.value = Session(title, host, client, poller, demo, user, http)
+        val serial = com.airmaxfield.airos.SerializedClient(client)
+        val poller = StatusPoller(serial, viewModelScope)
+        val tools = com.airmaxfield.ui.tools.ToolsController(
+            serial, host, { poller.state.value.status?.hostname }, backups, viewModelScope,
+        )
+        _session.value = Session(title, host, serial, poller, demo, user, http, tools)
         poller.start()
     }
 
@@ -168,6 +187,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun closeSession() {
         _session.value?.let { s ->
             s.poller.stop()
+            s.tools.close()
             s.http?.let { runCatching { it.connectionPool.evictAll(); it.dispatcher.executorService.shutdown() } }
         }
         _session.value = null

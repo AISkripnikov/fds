@@ -58,6 +58,8 @@ import com.airmaxfield.ui.status.AlignmentTone
 import com.airmaxfield.ui.status.STALE_AFTER_SEC
 import com.airmaxfield.ui.status.StatusScreen
 import com.airmaxfield.ui.status.staleSeconds
+import com.airmaxfield.ui.stations.StationsScreen
+import com.airmaxfield.ui.tools.ToolsScreen
 import kotlinx.coroutines.delay
 import com.airmaxfield.ui.theme.AirmaxTheme
 import com.airmaxfield.ui.theme.LocalAirColors
@@ -224,6 +226,29 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
         if (tab == 0) {
             StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
                 modifier = Modifier.padding(pad))
+        } else if (tab == 1) {
+            val st by s.tools.stations.collectAsState()
+            DisposableEffect(s) { s.tools.startStations(); onDispose { s.tools.stopStations() } }
+            StationsScreen(st, Modifier.padding(pad))
+        } else if (tab == 3) {
+            val survey by s.tools.survey.collectAsState()
+            val toolsUi by s.tools.tools.collectAsState()
+            var exportFile by remember { mutableStateOf<java.io.File?>(null) }
+            val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+                val f = exportFile
+                if (uri != null && f != null) vm.exportBackup(uri, f)
+                exportFile = null
+            }
+            LaunchedEffect(toolsUi.message) {
+                toolsUi.message?.let { android.widget.Toast.makeText(ctx, it, android.widget.Toast.LENGTH_LONG).show(); s.tools.message(null) }
+            }
+            ToolsScreen(
+                survey, toolsUi, deviceName = ui.status?.hostname ?: s.title,
+                onSurvey = s.tools::runSurvey, onSaveConfig = s.tools::saveConfig,
+                onExport = { f -> exportFile = f; exporter.launch(f.name) },
+                onDelete = s.tools::deleteBackup, onReboot = s.tools::reboot,
+                onRefreshBackups = s.tools::refreshBackups, modifier = Modifier.padding(pad),
+            )
         } else {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
