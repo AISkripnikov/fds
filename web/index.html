@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Беттинг-лаборатория</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Беттинг-лаборатория</div>
+  <nav class="tabs" role="tablist">
+    <button data-tab="predict">Прогноз</button>
+    <button data-tab="tracker">Трекер</button>
+    <button data-tab="calc">Калькуляторы</button>
+    <button data-tab="casino">Казино</button>
+  </nav>
+</header>
+
+<main>
+<!-- ============ ПРОГНОЗ ============ -->
+<section id="tab-predict" class="tab" hidden>
+  <div class="grid2">
+    <div class="card">
+      <h2>Матч (футбол, модель Пуассона)</h2>
+      <div class="row">
+        <label>Хозяева<input id="p-home" value="Хозяева"></label>
+        <label>Гости<input id="p-away" value="Гости"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="p-manual"> Ввести ожидаемые голы (xG) вручную</label>
+
+      <div id="p-stats">
+        <h3>Средние по лиге за матч</h3>
+        <div class="row">
+          <label>Голы хозяев<input id="p-lgh" type="number" step="0.01" min="0" value="1.55"></label>
+          <label>Голы гостей<input id="p-lga" type="number" step="0.01" min="0" value="1.20"></label>
+        </div>
+        <h3>Хозяева — домашние матчи</h3>
+        <div class="row">
+          <label>Забивают в среднем<input id="p-hs" type="number" step="0.01" min="0" value="1.90"></label>
+          <label>Пропускают в среднем<input id="p-hc" type="number" step="0.01" min="0" value="1.00"></label>
+        </div>
+        <h3>Гости — выездные матчи</h3>
+        <div class="row">
+          <label>Забивают в среднем<input id="p-as" type="number" step="0.01" min="0" value="1.10"></label>
+          <label>Пропускают в среднем<input id="p-ac" type="number" step="0.01" min="0" value="1.60"></label>
+        </div>
+      </div>
+      <div id="p-xg" hidden>
+        <div class="row">
+          <label>xG хозяев<input id="p-xh" type="number" step="0.01" min="0" value="1.60"></label>
+          <label>xG гостей<input id="p-xa" type="number" step="0.01" min="0" value="1.10"></label>
+        </div>
+      </div>
+
+      <h3>Управление банком</h3>
+      <div class="row">
+        <label>Банк<input id="p-bank" type="number" step="1" min="0" value="1000"></label>
+        <label>Доля Келли<input id="p-kf" type="number" step="0.05" min="0" max="1" value="0.25"></label>
+        <label>Порог value, %<input id="p-th" type="number" step="0.5" min="0" value="3"></label>
+      </div>
+      <p class="hint">Ожидаемые голы хозяев = (забивают дома × пропускают гости в гостях) / средние голы хозяев в лиге. Аналогично для гостей.</p>
+    </div>
+
+    <div class="card">
+      <h2>Результат</h2>
+      <div id="p-lambda" class="lead"></div>
+      <div class="probbar" id="p-bar"></div>
+      <div class="tbl-wrap"><table class="tbl" id="p-markets"></table></div>
+      <div id="p-margins" class="hint"></div>
+      <h3>Точный счёт</h3>
+      <div class="tbl-wrap"><div id="p-scores"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ТРЕКЕР ============ -->
+<section id="tab-tracker" class="tab" hidden>
+  <div class="grid2">
+    <div class="card">
+      <h2>Новая ставка</h2>
+      <form id="t-form" autocomplete="off">
+        <div class="row">
+          <label>Дата<input id="t-date" type="date" required></label>
+          <label>Спорт<input id="t-sport" list="t-sports" placeholder="Футбол"></label>
+          <datalist id="t-sports"></datalist>
+        </div>
+        <label>Событие<input id="t-event" placeholder="Команда А — Команда Б" required></label>
+        <div class="row">
+          <label>Рынок<input id="t-market" placeholder="П1, ТБ 2.5…"></label>
+          <label>Коэфф.<input id="t-odds" type="number" step="0.01" min="1.01" required></label>
+          <label>Сумма<input id="t-stake" type="number" step="0.01" min="0.01" required></label>
+        </div>
+        <div class="row">
+          <label>Статус
+            <select id="t-status">
+              <option value="pending">В игре</option>
+              <option value="won">Выигрыш</option>
+              <option value="lost">Проигрыш</option>
+              <option value="void">Возврат</option>
+            </select>
+          </label>
+          <label>Ваша вероятность, %<input id="t-prob" type="number" step="0.1" min="0" max="100" placeholder="необязательно"></label>
+        </div>
+        <button type="submit" class="primary">Добавить ставку</button>
+      </form>
+
+      <h3>Настройки и данные</h3>
+      <div class="row">
+        <label>Стартовый банк<input id="t-bank" type="number" step="1" min="0"></label>
+      </div>
+      <div class="btns">
+        <button id="t-export">Экспорт JSON</button>
+        <button id="t-csv">Экспорт CSV</button>
+        <label class="btn">Импорт JSON<input id="t-import" type="file" accept=".json,application/json" hidden></label>
+      </div>
+      <p class="hint">Данные хранятся только в этом браузере. Периодически делайте экспорт.</p>
+    </div>
+
+    <div class="card">
+      <h2>Статистика</h2>
+      <div id="t-stats" class="stats"></div>
+      <h3>Банк по рассчитанным ставкам</h3>
+      <svg id="t-chart" class="chart"></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>История</h2>
+      <label class="inline">Спорт
+        <select id="t-filter"><option value="">Все</option></select>
+      </label>
+    </div>
+    <div class="tbl-wrap"><table class="tbl" id="t-table"></table></div>
+  </div>
+</section>
+
+<!-- ============ КАЛЬКУЛЯТОРЫ ============ -->
+<section id="tab-calc" class="tab" hidden>
+  <div class="grid2">
+    <div class="card">
+      <h2>Конвертер коэффициентов</h2>
+      <div class="row">
+        <label>Формат
+          <select id="cv-fmt">
+            <option value="dec">Десятичный (2.50)</option>
+            <option value="frac">Дробный (3/2)</option>
+            <option value="us">Американский (+150)</option>
+            <option value="prob">Вероятность, %</option>
+          </select>
+        </label>
+        <label>Значение<input id="cv-val" value="2.50"></label>
+      </div>
+      <div id="cv-out" class="kv"></div>
+    </div>
+
+    <div class="card">
+      <h2>Маржа букмекера</h2>
+      <div class="row">
+        <label>Исход 1<input id="mg-1" type="number" step="0.01" value="2.10"></label>
+        <label>Исход 2<input id="mg-2" type="number" step="0.01" value="3.40"></label>
+        <label>Исход 3<input id="mg-3" type="number" step="0.01" value="3.60" placeholder="пусто, если 2 исхода"></label>
+      </div>
+      <div id="mg-out" class="kv"></div>
+    </div>
+
+    <div class="card">
+      <h2>Критерий Келли</h2>
+      <div class="row">
+        <label>Вероятность, %<input id="k-p" type="number" step="0.1" value="55"></label>
+        <label>Коэфф.<input id="k-o" type="number" step="0.01" value="2.00"></label>
+      </div>
+      <div class="row">
+        <label>Банк<input id="k-b" type="number" step="1" value="1000"></label>
+        <label>Доля Келли<input id="k-f" type="number" step="0.05" value="0.25"></label>
+      </div>
+      <div id="k-out" class="kv"></div>
+    </div>
+
+    <div class="card">
+      <h2>Экспресс</h2>
+      <div id="px-legs"></div>
+      <div class="btns"><button id="px-add">+ Событие</button></div>
+      <div class="row"><label>Сумма<input id="px-stake" type="number" step="1" value="100"></label></div>
+      <div id="px-out" class="kv"></div>
+      <p class="hint">Вероятности необязательны. Если указаны для всех событий — считается матожидание.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Симулятор банка (Монте-Карло)</h2>
+    <div class="row wrap">
+      <label>Вероятность, %<input id="s-p" type="number" step="0.1" value="52"></label>
+      <label>Коэфф.<input id="s-o" type="number" step="0.01" value="2.00"></label>
+      <label>Стартовый банк<input id="s-bank" type="number" step="1" value="1000"></label>
+      <label>Стратегия
+        <select id="s-mode">
+          <option value="flat">Фикс. сумма</option>
+          <option value="pct">% от банка</option>
+          <option value="kelly">Доля Келли</option>
+        </select>
+      </label>
+      <label><span id="s-stake-lbl">Сумма ставки</span><input id="s-stake" type="number" step="0.01" value="20"></label>
+      <label>Ставок<input id="s-n" type="number" step="1" value="500"></label>
+      <label>Симуляций<input id="s-runs" type="number" step="100" value="2000"></label>
+    </div>
+    <div class="btns"><button id="s-run" class="primary">Запустить</button></div>
+    <div id="s-out" class="stats"></div>
+    <svg id="s-chart" class="chart"></svg>
+  </div>
+</section>
+
+<!-- ============ КАЗИНО ============ -->
+<section id="tab-casino" class="tab" hidden>
+  <div class="card balance-card">
+    <div>Баланс: <b id="c-bal" class="big">0</b> фишек</div>
+    <button id="c-reset">Сбросить до 1000</button>
+    <p class="hint">Только виртуальные фишки, без денег. Под каждой игрой видно, сколько она возвращает в теории и сколько вернула вам на практике.</p>
+  </div>
+
+  <div class="grid3">
+    <div class="card">
+      <h2>Слоты</h2>
+      <div class="reels"><div class="reel">🍒</div><div class="reel">🍋</div><div class="reel">7️⃣</div></div>
+      <div class="row">
+        <label>Ставка<select id="sl-bet"><option>1</option><option selected>5</option><option>10</option><option>25</option><option>50</option></select></label>
+      </div>
+      <div class="btns"><button id="sl-spin" class="primary">Крутить</button></div>
+      <div id="sl-msg" class="msg"></div>
+      <details><summary>Таблица выплат</summary><div id="sl-pay"></div></details>
+      <div id="st-slots" class="gstats"></div>
+    </div>
+
+    <div class="card">
+      <h2>Рулетка (европейская)</h2>
+      <div id="rl-num" class="rl-num">—</div>
+      <div id="rl-hist" class="rl-hist"></div>
+      <div class="row">
+        <label>Фишка<select id="rl-amt"><option>1</option><option selected>5</option><option>10</option><option>25</option><option>100</option></select></label>
+        <label>Число 0–36<input id="rl-n" type="number" min="0" max="36" value="17"></label>
+      </div>
+      <div class="rl-board" id="rl-board"></div>
+      <div id="rl-slip" class="slip"></div>
+      <div class="btns"><button id="rl-spin" class="primary">Крутить</button><button id="rl-clear">Очистить</button></div>
+      <div id="rl-msg" class="msg"></div>
+      <div id="st-roulette" class="gstats"></div>
+    </div>
+
+    <div class="card">
+      <h2>Блэкджек</h2>
+      <div class="hand-lbl">Дилер <span id="bj-dv"></span></div>
+      <div id="bj-d" class="hand"></div>
+      <div class="hand-lbl">Вы <span id="bj-pv"></span></div>
+      <div id="bj-p" class="hand"></div>
+      <div class="row">
+        <label>Ставка<select id="bj-bet"><option>5</option><option selected>10</option><option>25</option><option>50</option><option>100</option></select></label>
+      </div>
+      <div class="btns">
+        <button id="bj-deal" class="primary">Раздать</button>
+        <button id="bj-hit">Ещё</button>
+        <button id="bj-stand">Хватит</button>
+        <button id="bj-double">Удвоить</button>
+      </div>
+      <div id="bj-msg" class="msg"></div>
+      <p class="hint">6 колод, дилер стоит на всех 17, блэкджек платит 3:2. Сплита нет.</p>
+      <div id="st-bj" class="gstats"></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  Модели дают оценки, а не гарантии. Маржа букмекера и случайность делают большинство игроков убыточными на длинной дистанции.
+</footer>
+
+<script src="js/util.js"></script>
+<script src="js/predict.js"></script>
+<script src="js/tracker.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/casino.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
