@@ -15,10 +15,23 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    // Один постоянный ключ для всех сборок (облако и ПК), чтобы новые версии ставились поверх старых.
+    // Ключ лежит в публичном репозитории намеренно: приложение ставится только вручную, не через магазин.
+    signingConfigs {
+        create("shared") {
+            storeFile = rootProject.file("signing/airmax-pole.jks")
+            storePassword = "airmaxpole"
+            keyAlias = "airmax-pole"
+            keyPassword = "airmaxpole"
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
     compileOptions {
