@@ -66,4 +66,17 @@ class ToolsParsersTest {
         assertEquals(listOf(b.name), store.list().map { it.name })
         assertNull(store.list().firstOrNull { it.name == "a.cfg" })
     }
+
+    @Test fun survey_accepts_object_wrapping_the_list() {
+        val wrapped = """{"status":"ok","survey":[{"mac":"24:5A:4C:00:00:01","essid":"A","freq":5180,"signal":-60}]}"""
+        val e = SurveyParser.parse(wrapped).single()
+        assertEquals("A", e.ssid); assertEquals(5180, e.frequencyMhz); assertEquals(-60, e.signalDbm)
+        assertEquals(0, SurveyParser.parse("""{"survey":[]}""").size)
+    }
+
+    @Test fun survey_without_list_explains_and_shows_body() {
+        try { SurveyParser.parse("""{"status":"scanning"}"""); org.junit.Assert.fail() } catch (e: AirOsError.Protocol) {
+            org.junit.Assert.assertTrue(e.message!!.contains("scanning"))
+        }
+    }
 }

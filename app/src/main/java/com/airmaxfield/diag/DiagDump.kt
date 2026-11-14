@@ -23,7 +23,8 @@ object DiagDump {
     fun buildZip(dump: Map<String, String>, meta: Map<String, String>, out: OutputStream) {
         ZipOutputStream(out).use { z ->
             dump.forEach { (path, body) ->
-                val name = path.trim('/').replace('/', '_').ifEmpty { "root" } + ".json"
+                val ext = if (path.contains(".cfg")) ".txt" else ".json"
+                val name = path.trim('/').replace('/', '_').replace('?', '_').ifEmpty { "root" } + ext
                 z.putNextEntry(ZipEntry(name)); z.write(redact(body).toByteArray()); z.closeEntry()
             }
             val text = meta.filterKeys { !SECRET.containsMatchIn(it) }

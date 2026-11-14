@@ -61,7 +61,7 @@ fun ChangesDialog(
                 for (ch in changes) {
                     val danger = DangerousKeys.isDangerous(ch.key)
                     Column {
-                        Text((if (danger) "⚠ " else "") + (HelpContent.forKey(ch.key)?.title ?: ch.key),
+                        Text((if (danger) "⚠ " else "") + com.airmaxfield.help.KeyTitles.titleFor(ch.key),
                             color = if (danger) c.fair else c.muted, fontSize = 13.sp)
                         Text("${shownValue(ch.key, ch.old)}  →  ${shownValue(ch.key, ch.new)}",
                             color = c.text, fontFamily = FontFamily.Monospace, fontSize = 15.sp)

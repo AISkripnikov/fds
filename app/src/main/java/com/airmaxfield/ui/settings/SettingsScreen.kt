@@ -224,8 +224,8 @@ private fun SettingCard(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = help?.title ?: entry.key,
-                        style = MaterialTheme.typography.labelMedium,
+                        text = com.airmaxfield.help.KeyTitles.titleFor(entry.key),
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (draft != null) {
@@ -244,6 +244,13 @@ private fun SettingCard(
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                if (com.airmaxfield.help.KeyTitles.titleFor(entry.key) != entry.key) {
+                    Text(
+                        text = entry.key,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        color = LocalAirColors.current.muted,
+                    )
+                }
             }
 
             if (help != null) {
@@ -359,7 +366,7 @@ private fun EditDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.card,
-        title = { Text(help?.title ?: entry.key, color = c.text) },
+        title = { Text(com.airmaxfield.help.KeyTitles.titleFor(entry.key), color = c.text) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(entry.key, fontFamily = FontFamily.Monospace, color = c.muted, style = MaterialTheme.typography.bodySmall)

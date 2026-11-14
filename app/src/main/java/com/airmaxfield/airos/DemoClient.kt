@@ -67,6 +67,11 @@ class DemoClient(seed: Long = 1, private val now: () -> Long = System::currentTi
             txRateMbps = 520.0 + (signal + 58) * 10,
             rxRateMbps = 480.0 + (signal + 58) * 10,
             lanSpeed = "100 Мбит/с",
+            remote = RemoteSide(
+                hostname = "Демо — Север B", model = "NanoStation 5AC loco", firmware = "v8.7.11", ip = "192.168.1.21",
+                mode = "sta-ptp", signalDbm = signal - 2, noiseDbm = -93, chainSignalDbm = listOf(signal - 3, signal - 4),
+                txPowerDbm = 18, distanceM = 2400, uptimeSec = 3600L + t, lanSpeed = "100 Мбит/с",
+            ),
         )
     }
 

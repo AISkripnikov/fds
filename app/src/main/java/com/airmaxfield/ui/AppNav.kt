@@ -418,7 +418,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 profiles = profiles)
         } else if (tab == 0) {
             StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
-                modifier = Modifier.padding(pad))
+                modifier = Modifier.padding(pad), onOpenRemote = if (s.demo) null else vm::openRemote)
         } else if (tab == 1) {
             val st by s.tools.stations.collectAsState()
             DisposableEffect(s) { s.tools.startStations(); onDispose { s.tools.stopStations() } }

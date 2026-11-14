@@ -117,7 +117,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val local = _networks.value.filter { it.kind == LocalNet.Kind.WIFI || it.kind == LocalNet.Kind.ETHERNET }
         if (local.isEmpty()) return "Телефон не подключён ни к Wi‑Fi, ни к кабелю. Подключитесь к сети пушки."
         val ok = local.any { n -> n.ipv4 != null && n.prefix != null && inSameSubnet(n.ipv4, n.prefix, host) }
-        return if (ok) null else
+        if (ok) return null
+        val onMgmtWifi = local.any { n -> n.ipv4 != null && inSameSubnet("192.168.172.0", 24, n.ipv4) }
+        return if (onMgmtWifi)
+            "Телефон подключён к служебному Wi‑Fi пушки (192.168.172.x) — через него видна только сама эта пушка, " +
+                "в сеть моста ($host) он, скорее всего, не пускает. Подключитесь к служебному Wi‑Fi второй пушки " +
+                "или к сети за мостом (кабель/роутер в подсети $host)."
+        else
             "Телефон не в сети пушки. Для сброшенной пушки (192.168.1.20) задайте телефону адрес 192.168.1.100, маска 255.255.255.0."
     }
 
@@ -332,6 +338,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val pendingTarget: StateFlow<com.airmaxfield.ui.devices.ConnectTarget?> = _pendingTarget.asStateFlow()
     fun pendingTargetTaken() { _pendingTarget.value = null }
 
+    /** Открыть окно подключения ко второй стороне линка (адрес из ответа этой пушки). */
+    fun openRemote(r: com.airmaxfield.airos.RemoteSide) {
+        val s = _session.value ?: return
+        val ip = r.ip ?: return
+        val saved = _devices.value.firstOrNull { it.host == ip }
+        _pendingTarget.value = com.airmaxfield.ui.devices.ConnectTarget(
+            ip, saved?.name ?: r.hostname, saved?.user ?: s.user, saved?.pass ?: s.pass)
+        closeSession()
+    }
+
     /** Неверный пароль: отключиться и открыть окно подключения с пустым паролем. */
     fun editCredentials() {
         val s = _session.value ?: return
@@ -352,7 +368,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun writeDump(uri: android.net.Uri, s: Session) {
         viewModelScope.launch {
             try {
-                val dump = s.client.rawDump()
+                // Конфигурация — с вырезанными паролями, ключами и community (DiagDump.redact):
+                // по ней сверяются имена настроек конкретной прошивки.
+                val cfg = runCatching { s.client.downloadConfig() }.getOrNull()
+                val dump = s.client.rawDump() + listOfNotNull(cfg?.let { "/system.cfg (пароли скрыты)" to it })
                 val st = s.poller.state.value.status
                 val meta = linkedMapOf(
                     "app" to "airMAX Поле ${com.airmaxfield.BuildConfig.VERSION_NAME}",

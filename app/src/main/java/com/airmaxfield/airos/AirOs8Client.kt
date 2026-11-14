@@ -70,8 +70,12 @@ class AirOs8Client(
         return withContext(Dispatchers.Default) { StationsParser.fromStatus8(body) }
     }
 
+    /** Последний ответ обзора эфира — попадает в диагностический дамп (без повторного обзора). */
+    @Volatile private var lastSurveyRaw: String? = null
+
     override suspend fun survey(): List<SurveyEntry> {
         val body = fetchOk("/survey.json.cgi?iface=ath0", slowHttp)
+        lastSurveyRaw = body
         return withContext(Dispatchers.Default) { SurveyParser.parse(body) }
     }
 
@@ -121,6 +125,7 @@ class AirOs8Client(
             val r = runCatching { fetch(p) }.getOrNull() ?: continue
             if (r.code in 200..299) out[p] = r.body
         }
+        lastSurveyRaw?.let { out["/survey.json.cgi (последний обзор)"] = it }
         return out
     }
 }

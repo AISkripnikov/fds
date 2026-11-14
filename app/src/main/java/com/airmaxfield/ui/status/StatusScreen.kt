@@ -46,6 +46,8 @@ fun StatusScreen(
     onEditPassword: () -> Unit,
     onSaveDump: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Подключиться ко второй стороне (null — кнопку не показывать). */
+    onOpenRemote: ((com.airmaxfield.airos.RemoteSide) -> Unit)? = null,
 ) {
     val c = LocalAirColors.current
     val s = ui.status
@@ -67,7 +69,44 @@ fun StatusScreen(
                 color = c.muted, fontSize = 13.sp)
         }
         Summary(s)
+        s?.remote?.let { RemoteCard(it, onOpenRemote) }
     }
+}
+
+/** Вторая сторона линка — по данным этой пушки, без подключения к ней. */
+@Composable
+private fun RemoteCard(r: com.airmaxfield.airos.RemoteSide, onOpen: ((com.airmaxfield.airos.RemoteSide) -> Unit)?) {
+    val c = LocalAirColors.current
+    AirCard(Modifier.fillMaxWidth()) {
+        Text("Вторая сторона", color = c.text, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text("Данные этой пушки о второй — подключаться к ней не нужно.", color = c.muted, fontSize = 13.sp)
+        InfoRow("Имя", r.hostname ?: DASH)
+        InfoRow("Модель", r.model ?: DASH)
+        InfoRow("Прошивка", r.firmware ?: DASH)
+        InfoRow("IP", r.ip ?: DASH)
+        InfoRow("Режим", modeName(r.mode))
+        InfoRow("Сигнал у неё", r.signalDbm?.let { "$it dBm" } ?: DASH,
+            valueColor = r.signalDbm?.let { com.airmaxfield.ui.theme.signalQuality(it) }?.let {
+                when (it) { Quality.GOOD -> c.good; Quality.FAIR -> c.fair; Quality.BAD -> c.bad; else -> null }
+            })
+        if (r.chainSignalDbm.isNotEmpty()) InfoRow("Цепи у неё", r.chainSignalDbm.joinToString(" / "))
+        InfoRow("Шум у неё", r.noiseDbm?.let { "$it dBm" } ?: DASH)
+        InfoRow("SNR у неё", if (r.signalDbm != null && r.noiseDbm != null) "${r.signalDbm - r.noiseDbm} dB" else DASH)
+        InfoRow("Мощность", r.txPowerDbm?.let { "$it dBm" } ?: DASH)
+        InfoRow("LAN", r.lanSpeed ?: DASH)
+        InfoRow("Время работы", r.uptimeSec?.let { fmtUptime(it) } ?: DASH)
+        if (onOpen != null && r.ip != null) {
+            androidx.compose.material3.OutlinedButton(onClick = { onOpen(r) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Подключиться к ней (${r.ip})") }
+        }
+    }
+}
+
+/** Занятость эфира: ≤ 50% хорошо, ≤ 80% средне, больше — перегружен. */
+private fun airtimeQuality(p: Int): Quality = when {
+    p <= 50 -> Quality.GOOD
+    p <= 80 -> Quality.FAIR
+    else -> Quality.BAD
 }
 
 @Composable
@@ -76,9 +115,15 @@ private fun TileGrid(s: DeviceStatus?) {
     val rows = listOf(
         Triple("Шум", s?.noiseDbm?.toString(), "dBm" to Quality.UNKNOWN),
         Triple("SNR", s?.snrDb?.toString(), "dB" to snrQuality(s?.snrDb)),
-        if (useCcq) Triple("CCQ", s?.ccqPercent?.toString(), "%" to percentQuality(s?.ccqPercent))
-        else Triple("airMAX качество", s?.airmaxQuality?.toString(), "%" to percentQuality(s?.airmaxQuality)),
-        Triple("airMAX ёмкость", s?.airmaxCapacity?.toString(), "%" to percentQuality(s?.airmaxCapacity)),
+        when {
+            s?.airmaxQuality == null && s?.linkScore != null ->
+                Triple("Оценка линка", s.linkScore.toString(), "%" to percentQuality(s.linkScore))
+            useCcq -> Triple("CCQ", s?.ccqPercent?.toString(), "%" to percentQuality(s?.ccqPercent))
+            else -> Triple("airMAX качество", s?.airmaxQuality?.toString(), "%" to percentQuality(s?.airmaxQuality))
+        },
+        if (s?.airmaxCapacity == null && s?.airtimePercent != null)
+            Triple("Эфир занят", s.airtimePercent.toString(), "%" to airtimeQuality(s.airtimePercent))
+        else Triple("airMAX ёмкость", s?.airmaxCapacity?.toString(), "%" to percentQuality(s?.airmaxCapacity)),
         Triple("TX", s?.txRateMbps?.let { fmtRate(it) }, "Мбит/с" to Quality.UNKNOWN),
         Triple("RX", s?.rxRateMbps?.let { fmtRate(it) }, "Мбит/с" to Quality.UNKNOWN),
     )

@@ -27,6 +27,28 @@ data class DeviceStatus(
     val txRateMbps: Double? = null,
     val rxRateMbps: Double? = null,
     val lanSpeed: String? = null,
+    /** airOS 8: оценка линка, % (dl/ul linkscore — берём худшую сторону). */
+    val linkScore: Int? = null,
+    /** airOS 8: эфир занят, % (polling.use). Меньше — лучше. */
+    val airtimePercent: Int? = null,
+    /** Вторая сторона линка, как её видит эта пушка (без подключения к ней). */
+    val remote: RemoteSide? = null,
 ) {
     val snrDb: Int? get() = if (signalDbm != null && noiseDbm != null) signalDbm - noiseDbm else null
 }
+
+/** Данные второй стороны линка из ответа этой пушки (airOS 8: wireless.sta[].remote). */
+data class RemoteSide(
+    val hostname: String? = null,
+    val model: String? = null,
+    val firmware: String? = null,
+    val ip: String? = null,
+    val mode: String? = null,
+    val signalDbm: Int? = null,
+    val noiseDbm: Int? = null,
+    val chainSignalDbm: List<Int> = emptyList(),
+    val txPowerDbm: Int? = null,
+    val distanceM: Int? = null,
+    val uptimeSec: Long? = null,
+    val lanSpeed: String? = null,
+)
