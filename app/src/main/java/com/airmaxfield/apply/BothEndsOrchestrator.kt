@@ -94,6 +94,12 @@ class BothEndsOrchestrator(
     /** «Сохранить на обеих»: дальняя, затем ближняя. */
     suspend fun confirmBoth(): Boolean {
         if (!canConfirm()) return false
+        // Дальнюю сохраняем, только если ближняя точно успеет следом: иначе мост разойдётся навсегда.
+        if (nearApply.remainingSec < NEAR_CONFIRM_MARGIN_SEC) {
+            _problem.value = "У ближней пушки осталось меньше $NEAR_CONFIRM_MARGIN_SEC с — сохранять поздно. " +
+                "Обе откатятся сами; повторите изменение."
+            return false
+        }
         if (!farApply.confirmNow()) {
             _problem.value = "Дальняя пушка не подтвердила — ничего не сохранено, обе откатятся по таймерам"
             return false
@@ -108,8 +114,14 @@ class BothEndsOrchestrator(
     }
 
     /** Повтор подтверждения ближней, если дальняя уже сохранена. */
-    suspend fun retryNear(): Boolean =
-        farApply.state.value is ApplyState.Confirmed && nearApply.confirmNow()
+    suspend fun retryNear(): Boolean {
+        if (farApply.state.value !is ApplyState.Confirmed || !nearApply.confirmNow()) return false
+        _problem.value = null
+        return true
+    }
+
+    /** После сохранения дальней откатывать ближнюю нельзя — мост разойдётся. */
+    fun canRollback(): Boolean = farApply.state.value !is ApplyState.Confirmed
 
     fun confirm() {
         cs.launch {
@@ -119,6 +131,7 @@ class BothEndsOrchestrator(
 
     /** «Откатить сейчас»: сначала дальняя (пока есть линк), потом ближняя. */
     suspend fun rollbackBoth() {
+        if (!canRollback()) return
         farApply.rollbackNow()
         nearApply.rollbackNow()
     }
@@ -131,5 +144,7 @@ class BothEndsOrchestrator(
         const val FAR_SECONDS = 300
         const val NEAR_SECONDS = 180
         const val RECOVERY_SECONDS = 60
+        /** Сколько секунд должно оставаться у ближней, чтобы начать «Сохранить на обеих». */
+        const val NEAR_CONFIRM_MARGIN_SEC = 15
     }
 }

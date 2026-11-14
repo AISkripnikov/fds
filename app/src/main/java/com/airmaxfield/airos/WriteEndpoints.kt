@@ -8,6 +8,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Адреса записи конфигурации. НЕ ПРОВЕРЕНЫ на живых пушках — угаданы по веб-интерфейсу
  * (план этапа 4, таблица «Неподтверждённые эндпоинты»). Правка — только здесь.
  */
+internal const val TEST_NOT_STARTED =
+    "тест-режим не включился: команда не дошла. Загруженная конфигурация не применена — перезагрузите пушку, чтобы сбросить её"
+
 object WriteEndpoints {
     /** Загрузка system.cfg (airOS 6 и 8): multipart, поле [UPLOAD_FIELD]. */
     const val UPLOAD = "/system.cgi"

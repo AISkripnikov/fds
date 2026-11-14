@@ -106,6 +106,35 @@ class BridgeTest {
         assertEquals("FERMA-LINK", SystemConfig.parse(nd.downloadConfig())["wireless.1.ssid"])
     }
 
+    @Test fun far_not_saved_when_near_is_about_to_expire() = runTest {
+        val nd = demo(); val fd = demo()
+        val o = orch(nd, fd)
+        o.prepare(relinked(nd, BridgeRole.STATION), relinked(fd, BridgeRole.AP)); runCurrent()
+        advanceTimeBy(170_000); runCurrent() // у ближней ~10 с
+        assertFalse(o.confirmBoth())
+        assertTrue(fd.inTest) // дальняя НЕ сохранена — откатится сама
+        assertTrue(o.problem.value!!.contains("поздно"))
+    }
+
+    @Test fun no_rollback_after_far_saved_and_retry_clears_problem() = runTest {
+        val nd = demo(); val fd = demo()
+        var failNear = true
+        val near = object : AirOsClient by nd {
+            override suspend fun confirmTest() { if (failNear) throw AirOsError.Protocol("HTTP 500") else nd.confirmTest() }
+        }
+        val o = orch(near, fd)
+        o.prepare(relinked(nd, BridgeRole.STATION), relinked(fd, BridgeRole.AP)); runCurrent()
+        assertFalse(o.confirmBoth())
+        assertTrue(o.farApply.state.value is ApplyState.Confirmed)
+        assertFalse(o.canRollback())
+        o.rollbackBoth()
+        assertTrue(nd.inTest) // ближнюю не откатили
+        failNear = false
+        advanceTimeBy(2_100); runCurrent()
+        assertTrue(o.retryNear())
+        assertEquals(null, o.problem.value)
+    }
+
     @Test fun refused_without_test_mode_on_either_side() = runTest {
         val nd = demo()
         val noTest = object : AirOsClient by demo() { override val hasTestMode get() = false }

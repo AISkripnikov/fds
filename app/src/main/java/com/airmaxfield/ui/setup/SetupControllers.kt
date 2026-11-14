@@ -67,6 +67,7 @@ class FirstLoginController(
                 sa.prepare(next.raw)
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 _errors.value = listOf("Не удалось прочитать конфигурацию: ${e.message}")
+                sa.close()
                 _apply.value = null
                 return@launch
             }

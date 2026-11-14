@@ -257,6 +257,7 @@ private fun BothEndsDialog(vm: AppViewModel, o: com.airmaxfield.apply.BothEndsOr
         onConfirm = o::confirm, onRollback = o::rollback, onClose = vm::closeRelink,
         confirmedText = "Обе пушки сохранены с новыми параметрами линка.",
         note = problem,
+        canRollback = !farDone,
     )
 }
 

@@ -238,9 +238,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return _devices.value.firstOrNull { it.pairId == pid && it.id != me.id }
     }
 
+    /** Подготовка изменения на обеих сторонах уже идёт (до появления окна) — второй запуск запрещён. */
+    private var relinkStarting = false
+
     fun startRelink(s: Session, link: com.airmaxfield.apply.LinkParams) {
-        if (_bothEnds.value != null) return
+        if (_bothEnds.value != null || relinkStarting) return
         val far = pairOf(s) ?: run { _toast.value = "Эта пушка не связана в пару"; return }
+        relinkStarting = true
+        _toast.value = "Подключаюсь к дальней пушке ${far.host}…"
         viewModelScope.launch {
             try {
                 val farClient = com.airmaxfield.airos.SerializedClient(connector(far.host, far.user, far.pass))
@@ -257,6 +262,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 o.start(P.relink(nearCfg, P.roleOf(nearCfg), link).raw, P.relink(farCfg, P.roleOf(farCfg), link).raw)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
                 _toast.value = "Дальняя пушка (${far.host}) не отвечает через мост: ${e.message}"
+            } finally {
+                relinkStarting = false
             }
         }
     }

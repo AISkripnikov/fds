@@ -93,6 +93,33 @@ class SafeApplyTest {
         assertTrue(s.state.value is ApplyState.RolledBack)
     }
 
+    @Test fun confirm_during_rollback_is_refused_and_state_does_not_freeze() = runTest {
+        val d = demo()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val c = object : AirOsClient by d {
+            override suspend fun cancelTest() { gate.await(); throw AirOsError.Unreachable(null) }
+        }
+        val s = safe(c)
+        s.prepare(changed(d)); runCurrent()
+        s.rollback(); runCurrent()
+        assertTrue(s.state.value is ApplyState.RollingBack)
+        assertFalse(s.confirmNow()) // пока идёт откат — сохранить нельзя
+        gate.complete(Unit); runCurrent()
+        assertTrue(s.state.value is ApplyState.Testing) // команда не дошла — отсчёт продолжается
+        advanceTimeBy(181_000); runCurrent()
+        assertTrue(s.state.value is ApplyState.RolledBack)
+    }
+
+    @Test fun rolling_back_still_expires_by_timer() = runTest {
+        val d = demo()
+        val c = object : AirOsClient by d { override suspend fun cancelTest() { kotlinx.coroutines.awaitCancellation() } }
+        val s = safe(c)
+        s.prepare(changed(d)); runCurrent()
+        s.rollback(); runCurrent()
+        advanceTimeBy(181_000); runCurrent()
+        assertEquals(ApplyState.RolledBack(SafeApply.EXPIRED), s.state.value)
+    }
+
     @Test fun upload_error_fails_without_test() = runTest {
         val d = demo()
         val c = object : AirOsClient by d {

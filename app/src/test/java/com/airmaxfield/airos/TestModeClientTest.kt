@@ -59,6 +59,26 @@ class TestModeClientTest {
         c.uploadConfig(cfg, 180) // не бросает
     }
 
+    @Test fun connect_failure_on_testmode_is_not_a_started_test() = runTest {
+        // Первый запрос (загрузка) проходит, затем сервер исчезает — команда теста не уходит вовсе.
+        val c = AirOs8Client(server.url("/"), "ubnt", "pw", deviceHttpClient(allowLoopback = true).newBuilder()
+            .addInterceptor { chain ->
+                if (chain.request().url.encodedPath == WriteEndpoints.APPLY) throw java.net.ConnectException("refused")
+                chain.proceed(chain.request())
+            }.build())
+        server.enqueue(MockResponse().setBody("{}"))
+        try { c.uploadConfig(cfg, 180); fail() } catch (e: AirOsError.Protocol) {
+            assertTrue(e.message!!.contains("не включился"))
+        }
+    }
+
+    @Test fun unreachable_classification() {
+        assertTrue(AirOsError.Unreachable(java.net.ConnectException()).beforeSend)
+        assertTrue(AirOsError.Unreachable(java.net.SocketTimeoutException("connect timed out")).beforeSend)
+        assertFalse(AirOsError.Unreachable(java.net.SocketTimeoutException("timeout")).beforeSend)
+        assertFalse(AirOsError.Unreachable(java.io.IOException("unexpected end of stream")).beforeSend)
+    }
+
     @Test fun v8_confirm_and_cancel() = runTest {
         val c = v8()
         server.enqueue(MockResponse().setBody("{}")); server.enqueue(MockResponse().setBody("{}"))

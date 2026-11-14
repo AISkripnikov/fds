@@ -101,6 +101,7 @@ fun ApplyProgressDialog(
     onClose: () -> Unit,
     confirmedText: String = "Изменения сохранены навсегда.",
     note: String? = null,
+    canRollback: Boolean = true,
 ) {
     val c = LocalAirColors.current
     val finished = rows.all { it.state.finished }
@@ -113,6 +114,7 @@ fun ApplyProgressDialog(
             Text(
                 when {
                     rows.all { it.state is ApplyState.Confirmed } -> "Сохранено"
+                    rows.any { it.state is ApplyState.RollingBack } -> "Откат…"
                     finished -> "Запись завершена"
                     testing -> "Тест-режим"
                     else -> "Запись…"
@@ -140,7 +142,7 @@ fun ApplyProgressDialog(
             }
         },
         dismissButton = {
-            if (testing) OutlinedButton(onClick = onRollback) { Text("Откатить сейчас") }
+            if (testing && canRollback) OutlinedButton(onClick = onRollback) { Text("Откатить сейчас") }
         },
     )
 }
@@ -155,6 +157,10 @@ private fun RowState(r: ApplyRow) {
             ApplyState.BackingUp -> Busy("Сохраняю резервную копию…")
             ApplyState.Uploading -> Busy("Загружаю конфигурацию…")
             ApplyState.Confirming -> Busy("Сохраняю навсегда…")
+            is ApplyState.RollingBack -> {
+                Busy("Отправляю команду отката…")
+                Text("Автооткат в любом случае через ${s.remainingSec} с", color = c.muted, fontSize = 13.sp)
+            }
             is ApplyState.Testing -> {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatusDot(s.reachable)

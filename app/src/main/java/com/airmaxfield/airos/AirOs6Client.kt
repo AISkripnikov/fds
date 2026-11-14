@@ -94,7 +94,9 @@ class AirOs6Client(
             val r = fetch("${WriteEndpoints.APPLY}?testmode=on")
             if (r.code !in 200..399) throw AirOsError.Protocol("тест-режим: HTTP ${r.code}")
         } catch (e: AirOsError.Unreachable) {
-            // Конфигурация применилась и связь ушла — для теста это нормально.
+            // Команда ушла, а ответа нет: пушка применила конфигурацию и пропала (смена IP/канала) —
+            // для теста это нормально. Если же команда не ушла вовсе — тест не начался.
+            if (e.beforeSend) throw AirOsError.Protocol(TEST_NOT_STARTED)
         }
     }
 

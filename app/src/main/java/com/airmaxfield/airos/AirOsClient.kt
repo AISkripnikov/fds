@@ -5,7 +5,14 @@ import kotlinx.coroutines.sync.withLock
 
 sealed class AirOsError(msg: String, cause: Throwable? = null) : Exception(msg, cause) {
     class BadCredentials : AirOsError("Неверный логин или пароль")
-    class Unreachable(cause: Throwable?) : AirOsError("Пушка не отвечает", cause)
+    class Unreachable(cause: Throwable?) : AirOsError("Пушка не отвечает", cause) {
+        /** Запрос точно не ушёл на пушку: не удалось даже соединиться. */
+        val beforeSend: Boolean
+            // По цепочке: восстановление стека корутин может обернуть исключение в свою копию.
+            get() = generateSequence(cause) { it.cause }.firstOrNull { it !is AirOsError }.let { c -> c is java.net.ConnectException || c is java.net.NoRouteToHostException ||
+                c is java.net.UnknownHostException ||
+                (c is java.net.SocketTimeoutException && c.message?.contains("connect", ignoreCase = true) == true) }
+    }
     class Protocol(detail: String) : AirOsError("Непонятный ответ пушки: $detail")
     /** Пушка в заводском состоянии — нужен первый вход (этап 4). */
     class FactoryDefault : AirOsError("Пушка в заводском состоянии")

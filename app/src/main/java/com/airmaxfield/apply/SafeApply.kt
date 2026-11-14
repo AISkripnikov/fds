@@ -22,6 +22,8 @@ sealed interface ApplyState {
     /** Пушка в тест-режиме. [reachable] — пушка снова отвечает; только тогда можно сохранить. */
     data class Testing(val remainingSec: Int, val totalSec: Int, val reachable: Boolean, val error: String? = null) : ApplyState
     data object Confirming : ApplyState
+    /** Команда отката отправляется; таймер пушки продолжает идти. */
+    data class RollingBack(val remainingSec: Int, val totalSec: Int) : ApplyState
     data object Confirmed : ApplyState
     data class RolledBack(val reason: String) : ApplyState
     /** Ошибка до тест-режима: на пушке ничего не поменялось. */
@@ -100,10 +102,16 @@ class SafeApply(
         while (true) {
             val left = remaining()
             if (left <= 0) {
-                _state.update { if (it is ApplyState.Testing) ApplyState.RolledBack(EXPIRED) else it }
+                _state.update { if (it is ApplyState.Testing || it is ApplyState.RollingBack) ApplyState.RolledBack(EXPIRED) else it }
                 if (_state.value.finished) { monitor?.cancel(); return }
             } else {
-                _state.update { if (it is ApplyState.Testing) it.copy(remainingSec = left) else it }
+                _state.update {
+                    when (it) {
+                        is ApplyState.Testing -> it.copy(remainingSec = left)
+                        is ApplyState.RollingBack -> it.copy(remainingSec = left)
+                        else -> it
+                    }
+                }
             }
             delay(1000)
         }
@@ -123,43 +131,55 @@ class SafeApply(
     }
 
     /** «Сохранить навсегда». Доступно только в тесте и при связи с пушкой. */
-    suspend fun confirmNow(): Boolean {
+    suspend fun confirmNow(minRemainingSec: Int = MIN_CONFIRM_SEC): Boolean {
         val s = _state.value as? ApplyState.Testing ?: return false
         if (!s.reachable) return false
-        if (remaining() < MIN_CONFIRM_SEC) {
+        if (remaining() < minRemainingSec) {
             _state.update { if (it is ApplyState.Testing) it.copy(error = "Слишком поздно — пушка вот-вот откатится") else it }
             return false
         }
-        _state.value = ApplyState.Confirming
+        // Атомарный переход: если параллельно начался откат, подтверждать нельзя.
+        var won = false
+        _state.update { cur -> if (cur is ApplyState.Testing && cur.reachable) { won = true; ApplyState.Confirming } else { won = false; cur } }
+        if (!won) return false
         return try {
             (lastGood ?: client).confirmTest()
             monitor?.cancel()
             _state.value = ApplyState.Confirmed
             true
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            _state.value = ApplyState.Testing(remaining(), s.totalSec, reachable = false,
-                error = "Не удалось сохранить: ${e.message}. Пушка откатится по таймеру, если не повторить.")
+            _state.update {
+                if (it is ApplyState.Confirming) ApplyState.Testing(remaining(), s.totalSec, reachable = false,
+                    error = "Не удалось сохранить: ${e.message}. Пушка откатится по таймеру, если не повторить.") else it
+            }
             false
         }
     }
+
+    /** Секунд до автоотката (0 — не в тесте). */
+    val remainingSec: Int get() = if (_state.value is ApplyState.Testing) remaining() else 0
 
     fun confirm() { cs.launch { confirmNow() } }
 
     /** «Откатить сейчас». Если команда не дошла — откат всё равно произойдёт по таймеру. */
     suspend fun rollbackNow() {
-        if (_state.value !is ApplyState.Testing) return
+        // Пока идёт команда отката, «Сохранить» недоступна (состояние уже не Testing).
+        var won = false
+        _state.update { cur ->
+            if (cur is ApplyState.Testing) { won = true; ApplyState.RollingBack(cur.remainingSec, cur.totalSec) } else { won = false; cur }
+        }
+        if (!won) return
+        fun backToTesting(msg: String) = _state.update {
+            if (it is ApplyState.RollingBack) ApplyState.Testing(it.remainingSec, it.totalSec, reachable = false, error = msg) else it
+        }
         try {
             (lastGood ?: client).cancelTest()
             monitor?.cancel()
-            _state.value = ApplyState.RolledBack(MANUAL)
+            _state.update { if (it is ApplyState.RollingBack) ApplyState.RolledBack(MANUAL) else it }
         } catch (e: CancellationException) { throw e } catch (e: AirOsError.Unreachable) {
-            _state.update {
-                if (it is ApplyState.Testing) it.copy(error = "Команда отката не дошла — пушка вернёт прежние настройки сама по таймеру") else it
-            }
+            backToTesting("Команда отката не дошла — пушка вернёт прежние настройки сама по таймеру")
         } catch (e: Exception) {
-            _state.update {
-                if (it is ApplyState.Testing) it.copy(error = "Не удалось откатить сразу (${e.message}) — откат произойдёт по таймеру") else it
-            }
+            backToTesting("Не удалось откатить сразу (${e.message}) — откат произойдёт по таймеру")
         }
     }
 
