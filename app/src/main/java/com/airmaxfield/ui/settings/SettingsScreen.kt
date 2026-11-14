@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import com.airmaxfield.airos.DangerousKeys
+import com.airmaxfield.airos.FieldType
 import com.airmaxfield.ui.theme.LocalAirColors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -209,7 +210,7 @@ private fun SettingCard(
     val help = HelpContent.forKey(entry.key)
     val isSensitive = SystemConfig.isSensitive(entry.key)
     val value = draft ?: entry.value
-    val displayValue = if (isSensitive) "••••••" else value
+    val displayValue = if (isSensitive) "••••••" else com.airmaxfield.airos.FieldSpec.label(entry.key, value)
 
     AirCard(
         modifier = Modifier.fillMaxWidth().then(if (editable) Modifier.clickable(onClick = onClick) else Modifier)
@@ -353,6 +354,8 @@ private fun EditDialog(
     val danger = DangerousKeys.kind(entry.key)
     var value by remember(entry.key) { mutableStateOf(draft ?: entry.value) }
     var shown by remember { mutableStateOf(!sensitive) }
+    val type = remember(entry.key) { com.airmaxfield.airos.FieldSpec.typeFor(entry.key, entry.value) }
+    val error = com.airmaxfield.airos.FieldSpec.validate(type, value)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.card,
@@ -360,21 +363,45 @@ private fun EditDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(entry.key, fontFamily = FontFamily.Monospace, color = c.muted, style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { v -> value = v.replace("\n", "") },
-                    singleLine = true,
-                    visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = if (sensitive) {
-                        {
-                            IconButton(onClick = { shown = !shown }) {
-                                Icon(if (shown) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Показать")
+                when (type) {
+                    is FieldType.Toggle -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (value == type.on) "Включено" else "Выключено", color = c.text, modifier = Modifier.weight(1f))
+                        Switch(checked = value == type.on, onCheckedChange = { value = if (it) type.on else type.off })
+                    }
+                    is FieldType.Choice -> Column {
+                        type.options.forEach { (v, label) ->
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { value = v }) {
+                                RadioButton(selected = value == v, onClick = { value = v })
+                                Text(label, color = c.text)
                             }
                         }
-                    } else null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (!sensitive) Text("Сейчас на пушке: ${entry.value}", color = c.muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    else -> OutlinedTextField(
+                        value = value,
+                        onValueChange = { v -> value = v.replace("\n", "") },
+                        singleLine = true,
+                        isError = error != null,
+                        supportingText = error?.let { e -> { Text(e) } },
+                        suffix = (type as? FieldType.Number)?.unit?.takeIf { it.isNotEmpty() }?.let { u -> { Text(u) } },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = when (type) {
+                            is FieldType.Number -> androidx.compose.ui.text.input.KeyboardType.Number
+                            FieldType.Ip, FieldType.Netmask -> androidx.compose.ui.text.input.KeyboardType.Decimal
+                            else -> if (sensitive) androidx.compose.ui.text.input.KeyboardType.Password else androidx.compose.ui.text.input.KeyboardType.Text
+                        }),
+                        visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = if (sensitive) {
+                            {
+                                IconButton(onClick = { shown = !shown }) {
+                                    Icon(if (shown) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Показать")
+                                }
+                            }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (!sensitive) Text("Сейчас на пушке: ${com.airmaxfield.airos.FieldSpec.label(entry.key, entry.value)}",
+                    color = c.muted, style = MaterialTheme.typography.bodySmall)
                 danger?.let {
                     Text("⚠ Опасное поле (${it.title}): после смены связь может пропасть. Запись пойдёт в тест-режиме с автооткатом.",
                         color = c.fair, style = MaterialTheme.typography.bodySmall)
@@ -382,7 +409,7 @@ private fun EditDialog(
                 help?.let { Text(it.description, color = c.text, style = MaterialTheme.typography.bodySmall) }
             }
         },
-        confirmButton = { Button(onClick = { onSave(value) }) { Text("В черновик") } },
+        confirmButton = { Button(onClick = { onSave(value) }, enabled = error == null) { Text("В черновик") } },
         dismissButton = {
             Row {
                 if (draft != null) TextButton(onClick = onRevert) { Text("Вернуть как было") }

@@ -126,4 +126,15 @@ class HelpContentTest {
         val help = HelpContent.forKey("unknown.key.that.does.not.exist")
         assertNull(help)
     }
+
+    @Test
+    fun stage4_and_5_help_present() {
+        for (k in listOf("aaa.1.wpa.psk", "wpasupplicant.profile.1.network.1.psk", "radio.countrycode", "radio.1.mode",
+            "wireless.1.wds.status", "route.1.gateway", "snmp.location")) {
+            assertNotNull(k, HelpContent.forKey(k))
+        }
+        val ids = HelpContent.articles.map { it.id }
+        assertTrue(ids.containsAll(listOf("safe-write", "bridge-wizard", "both-ends", "restore-backup")))
+        assertTrue(HelpContent.search("тест-режим").isNotEmpty())
+    }
 }

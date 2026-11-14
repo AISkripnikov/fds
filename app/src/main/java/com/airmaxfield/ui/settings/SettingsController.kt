@@ -26,6 +26,14 @@ import kotlinx.coroutines.plus
  * @param reconnect клиент для нового адреса управления (после смены IP); null — не умеем.
  * @param onConfirmed изменения сохранены навсегда; аргумент — новый адрес, если он сменился.
  */
+/** Предпросмотр восстановления копии. [error] — копию нельзя восстановить. */
+data class RestorePreview(
+    val changes: List<CfgChange>,
+    val warnings: List<String>,
+    val newHost: String?,
+    val error: String?,
+)
+
 class SettingsController(
     private val client: AirOsClient,
     private val scope: CoroutineScope,
@@ -80,6 +88,8 @@ class SettingsController(
     fun setDraft(key: String, value: String) {
         if (!canEdit(key) || value.contains('\n')) return
         val orig = _config.value?.get(key)
+        val type = com.airmaxfield.airos.FieldSpec.typeFor(key, orig ?: value)
+        if (com.airmaxfield.airos.FieldSpec.validate(type, value) != null) return
         _drafts.update { if (value == orig) it - key else it + (key to value) }
     }
 
@@ -102,9 +112,29 @@ class SettingsController(
 
     /** Запустить запись черновика в тест-режиме. */
     fun applyDrafts(testSeconds: Int = SafeApply.DEFAULT_TEST_SECONDS) {
-        if (_apply.value != null || _drafts.value.isEmpty()) return
-        val next = pending() ?: return
-        val moved = newHost()
+        if (_drafts.value.isEmpty()) return
+        applyConfig(pending() ?: return, testSeconds)
+    }
+
+    /** Что изменит восстановление копии [text]; null — конфигурация пушки не загружена. */
+    fun restorePreview(text: String): RestorePreview? {
+        val cur = _config.value ?: return null
+        if (!com.airmaxfield.airos.ConfigBackup.looksLikeConfig(text)) return RestorePreview(emptyList(), emptyList(), null, "Это не конфигурация airOS")
+        val plan = com.airmaxfield.apply.RestorePlanner.plan(cur, SystemConfig.parse(text), host)
+        return RestorePreview(cur.diff(plan.config), plan.warnings, Management.newHost(cur, plan.config, host), null)
+    }
+
+    /** Восстановить копию — так же через тест-режим. */
+    fun restore(text: String, testSeconds: Int = SafeApply.DEFAULT_TEST_SECONDS) {
+        val cur = _config.value ?: return
+        if (!writable || !com.airmaxfield.airos.ConfigBackup.looksLikeConfig(text)) return
+        applyConfig(com.airmaxfield.apply.RestorePlanner.plan(cur, SystemConfig.parse(text), host).config, testSeconds)
+    }
+
+    private fun applyConfig(next: SystemConfig, testSeconds: Int) {
+        if (_apply.value != null || !writable) return
+        val cur = _config.value ?: return
+        val moved = Management.newHost(cur, next, host)
         val target: suspend () -> AirOsClient =
             if (moved != null && reconnect != null) reconnect.invoke(moved) else ({ client })
         val sa = SafeApply(client, backup, cs, clock = clock, target = target)

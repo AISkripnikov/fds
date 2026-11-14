@@ -373,6 +373,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Импорт копии из файла телефона в список копий этой пушки. */
+    fun importBackup(uri: android.net.Uri, s: Session) {
+        viewModelScope.launch {
+            val r = runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val text = getApplication<Application>().contentResolver.openInputStream(uri)?.use {
+                        // Конфигурация — десятки килобайт; больше мегабайта — точно не она.
+                        val bytes = it.readBytes(); require(bytes.size < 1_000_000) { "файл слишком большой" }; String(bytes)
+                    } ?: error("не удалось открыть файл")
+                    require(com.airmaxfield.airos.ConfigBackup.looksLikeConfig(text)) { "это не конфигурация airOS" }
+                    val store = backups ?: error("хранилище недоступно")
+                    store.save(com.airmaxfield.airos.ConfigBackup.fileName(
+                        s.poller.state.value.status?.hostname, s.host, java.util.Date()), text)
+                }
+            }
+            s.tools.refreshBackups()
+            _toast.value = if (r.isSuccess) "Копия загружена — её можно восстановить" else "Не удалось загрузить: ${r.exceptionOrNull()?.message}"
+        }
+    }
+
     fun deleteDevice(id: String) { store?.delete(id); _devices.value = store?.all().orEmpty() }
 
     override fun onCleared() {

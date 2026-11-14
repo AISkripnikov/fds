@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,6 +61,8 @@ fun ToolsScreen(
     modifier: Modifier = Modifier,
     /** Дополнительный блок сверху (мост: изменения на обеих сторонах). */
     extra: @Composable () -> Unit = {},
+    onRestore: ((File) -> Unit)? = null,
+    onImport: (() -> Unit)? = null,
 ) {
     val c = LocalAirColors.current
     var askSurvey by remember { mutableStateOf(false) }
@@ -107,6 +110,11 @@ fun ToolsScreen(
                 modifier = Modifier.padding(top = 6.dp))
         }
         if (tools.backups.isEmpty()) Label("Копий этой пушки на телефоне пока нет")
+        if (onImport != null) {
+            androidx.compose.material3.OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
+                Text("Загрузить копию из файла…")
+            }
+        }
         tools.backups.forEach { f ->
             AirCard(Modifier.fillMaxWidth(), padding = 8) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -114,6 +122,9 @@ fun ToolsScreen(
                         Text(SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ru")).format(Date(f.lastModified())),
                             color = c.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                         Text(f.name, color = c.muted, fontSize = 12.sp)
+                    }
+                    if (onRestore != null) {
+                        IconButton(onClick = { onRestore(f) }) { Icon(Icons.Filled.Restore, "Восстановить", tint = c.accent) }
                     }
                     IconButton(onClick = { onExport(f) }) { Icon(Icons.Filled.IosShare, "Экспорт", tint = c.accent) }
                     IconButton(onClick = { askDelete = f }) { Icon(Icons.Filled.Delete, "Удалить", tint = c.muted) }

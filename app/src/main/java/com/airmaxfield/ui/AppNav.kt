@@ -203,6 +203,48 @@ private fun DevicesRoot(vm: AppViewModel) {
     LaunchedEffect(session) { if (session != null) target = null }
 }
 
+/** Восстановление копии: загрузка конфигурации пушки → сводка «было → стало» → запись в тест-режиме. */
+@Composable
+private fun RestoreFlow(vm: AppViewModel, s: Session, file: java.io.File?, onDone: () -> Unit) {
+    if (file == null) return
+    val config by s.settings.config.collectAsState()
+    val loading by s.settings.loading.collectAsState()
+    LaunchedEffect(file) { if (s.settings.config.value == null) s.settings.load() }
+    val text = remember(file) { runCatching { file.readText() }.getOrNull() }
+    if (config == null) {
+        if (!loading) {
+            androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
+                title = { Text("Нет конфигурации пушки") },
+                text = { Text("Не удалось прочитать текущую конфигурацию — без неё нельзя показать, что изменится.") },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = onDone) { Text("Закрыть") } })
+        }
+        return
+    }
+    val prev = remember(file, config) { text?.let { s.settings.restorePreview(it) } }
+    if (prev == null || prev.error != null) {
+        androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
+            title = { Text("Восстановить нельзя") },
+            text = { Text(prev?.error ?: "Не удалось прочитать файл копии") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = onDone) { Text("Закрыть") } })
+        return
+    }
+    if (prev.changes.isEmpty()) {
+        androidx.compose.material3.AlertDialog(onDismissRequest = onDone,
+            title = { Text("Нечего восстанавливать") },
+            text = { Text("Копия совпадает с текущей конфигурацией пушки.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = onDone) { Text("Закрыть") } })
+        return
+    }
+    val extra = prev.newHost?.let { h -> vm.subnetWarning(h) }
+    com.airmaxfield.ui.apply.ChangesDialog(
+        title = "Восстановить копию?", changes = prev.changes,
+        warnings = prev.warnings + com.airmaxfield.apply.Management.warnings(prev.changes), extra = extra,
+        testSeconds = s.client.testDurationFor(com.airmaxfield.apply.SafeApply.DEFAULT_TEST_SECONDS),
+        onConfirm = { onDone(); s.settings.restore(text!!) },
+        onDismiss = onDone,
+    )
+}
+
 /** Блок «Мост» на вкладке инструментов: смена канала на обеих сторонах. */
 @Composable
 private fun PairBlock(vm: AppViewModel, s: Session) {
@@ -283,6 +325,17 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
 
     val bothEnds by vm.bothEnds.collectAsState()
     bothEnds?.let { BothEndsDialog(vm, it) }
+    // Окно записи настроек/восстановления — поверх любой вкладки.
+    val settingsApply by s.settings.apply.collectAsState()
+    settingsApply?.let { sa ->
+        val st by sa.state.collectAsState()
+        com.airmaxfield.ui.apply.ApplyProgressDialog(
+            rows = listOf(com.airmaxfield.ui.apply.ApplyRow("", st)),
+            canConfirm = (st as? com.airmaxfield.apply.ApplyState.Testing)?.reachable == true,
+            confirmLabel = "Сохранить навсегда",
+            onConfirm = sa::confirm, onRollback = sa::rollback, onClose = s.settings::dismissApply,
+        )
+    }
 
     val connected = fresh && ui.status != null
     val subtitle = listOfNotNull(ui.status?.model, s.host.takeIf { !s.demo }).joinToString(" · ").ifEmpty { s.host }
@@ -335,6 +388,10 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
             val survey by s.tools.survey.collectAsState()
             val toolsUi by s.tools.tools.collectAsState()
             var exportFile by remember { mutableStateOf<java.io.File?>(null) }
+            var restoreFile by remember { mutableStateOf<java.io.File?>(null) }
+            val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) vm.importBackup(uri, s)
+            }
             val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
                 val f = exportFile
                 if (uri != null && f != null) vm.exportBackup(uri, f)
@@ -350,13 +407,15 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 onDelete = s.tools::deleteBackup, onReboot = s.tools::reboot,
                 onRefreshBackups = s.tools::refreshBackups, modifier = Modifier.padding(pad),
                 extra = { PairBlock(vm, s) },
+                onRestore = if (s.settings.writable) ({ f -> restoreFile = f }) else null,
+                onImport = { importer.launch(arrayOf("*/*")) },
             )
+            RestoreFlow(vm, s, restoreFile) { restoreFile = null }
         } else if (tab == 2) {
             val config by s.settings.config.collectAsState()
             val loading by s.settings.loading.collectAsState()
             val error by s.settings.error.collectAsState()
             val drafts by s.settings.drafts.collectAsState()
-            val apply by s.settings.apply.collectAsState()
             var review by remember { mutableStateOf(false) }
             DisposableEffect(s) { if (s.settings.config.value == null) s.settings.load(); onDispose { } }
             com.airmaxfield.ui.settings.SettingsScreen(
@@ -381,15 +440,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                     onDismiss = { review = false },
                 )
             }
-            apply?.let { sa ->
-                val st by sa.state.collectAsState()
-                com.airmaxfield.ui.apply.ApplyProgressDialog(
-                    rows = listOf(com.airmaxfield.ui.apply.ApplyRow("", st)),
-                    canConfirm = (st as? com.airmaxfield.apply.ApplyState.Testing)?.reachable == true,
-                    confirmLabel = "Сохранить навсегда",
-                    onConfirm = sa::confirm, onRollback = sa::rollback, onClose = s.settings::dismissApply,
-                )
-            }
+
         } else if (tab == 4) {
             com.airmaxfield.ui.help.HelpScreen(modifier = Modifier.padding(pad))
         } else {

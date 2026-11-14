@@ -25,6 +25,7 @@ class SettingsControllerTest {
         c.setDraft("radio.1.freq", "5200")
         c.setDraft("snmp.location", c.config.value!!["snmp.location"]!!) // то же значение — не черновик
         c.setDraft("users.1.password", "x") // не правится
+        c.setDraft("sshd.port", "99999")     // вне диапазона — не принимается
         assertEquals(mapOf("radio.1.freq" to "5200"), c.drafts.value)
         assertEquals(1, c.changes().size)
         assertNull(c.newHost())
