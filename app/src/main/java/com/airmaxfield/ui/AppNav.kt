@@ -138,13 +138,28 @@ private fun DevicesRoot(vm: AppViewModel) {
     val scanning by vm.scanning.collectAsState()
     val connectState by vm.connectState.collectAsState()
     var target by remember { mutableStateOf<ConnectTarget?>(null) }
+    var showHelp by rememberSaveable { mutableStateOf(false) }
+
+    if (showHelp) {
+        androidx.activity.compose.BackHandler { showHelp = false }
+        Scaffold(containerColor = c.bg, topBar = {
+            TopBar("Справочник", "Работает без подключения",
+                nav = { IconButton(onClick = { showHelp = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад", tint = c.text) } },
+                menu = { ThemeMenu(vm) })
+        }) { pad ->
+            com.airmaxfield.ui.help.HelpScreen(modifier = Modifier.padding(pad))
+        }
+        return
+    }
 
     LaunchedEffect(Unit) { vm.refreshNetworks() }
     val pending by vm.pendingTarget.collectAsState()
     LaunchedEffect(pending) { pending?.let { vm.clearConnectError(); target = it; vm.pendingTargetTaken() } }
 
     Scaffold(containerColor = c.bg, topBar = {
-        TopBar("airMAX Поле", "Выберите пушку", nav = null, menu = { ThemeMenu(vm) })
+        TopBar("airMAX Поле", "Выберите пушку", nav = null, menu = {
+            ThemeMenu(vm) { close -> DropdownMenuItem(text = { Text("Справочник") }, onClick = { close(); showHelp = true }) }
+        })
     }) { pad ->
         DevicesScreen(
             networks, devices, discovered, scanning,
@@ -249,6 +264,17 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 onDelete = s.tools::deleteBackup, onReboot = s.tools::reboot,
                 onRefreshBackups = s.tools::refreshBackups, modifier = Modifier.padding(pad),
             )
+        } else if (tab == 2) {
+            val config by s.settings.config.collectAsState()
+            val loading by s.settings.loading.collectAsState()
+            val error by s.settings.error.collectAsState()
+            DisposableEffect(s) { s.settings.load(); onDispose { } }
+            com.airmaxfield.ui.settings.SettingsScreen(
+                config, loading, error, onRetry = s.settings::retry,
+                modifier = Modifier.padding(pad)
+            )
+        } else if (tab == 4) {
+            com.airmaxfield.ui.help.HelpScreen(modifier = Modifier.padding(pad))
         } else {
             Box(Modifier.fillMaxSize().padding(pad), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -40,6 +40,7 @@ class Session(
     val user: String = "ubnt",
     val http: OkHttpClient? = null,
     val tools: com.airmaxfield.ui.tools.ToolsController,
+    val settings: com.airmaxfield.ui.settings.SettingsController,
 )
 
 sealed interface ConnectState {
@@ -178,7 +179,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val tools = com.airmaxfield.ui.tools.ToolsController(
             serial, host, { poller.state.value.status?.hostname }, backups, viewModelScope,
         )
-        _session.value = Session(title, host, serial, poller, demo, user, http, tools)
+        val settings = com.airmaxfield.ui.settings.SettingsController(serial, viewModelScope)
+        _session.value = Session(title, host, serial, poller, demo, user, http, tools, settings)
         poller.start()
     }
 
@@ -188,6 +190,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _session.value?.let { s ->
             s.poller.stop()
             s.tools.close()
+            s.settings.close()
             s.http?.let { runCatching { it.connectionPool.evictAll(); it.dispatcher.executorService.shutdown() } }
         }
         _session.value = null

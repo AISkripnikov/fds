@@ -66,8 +66,63 @@ class DemoClient(seed: Long = 1) : AirOsClient {
         )
     }
 
-    override suspend fun downloadConfig(): String =
-        (1..18).joinToString("\n") { "radio.1.demo$it=$it" } + "\nwireless.1.ssid=SEVER-LINK\nnetconf.1.ip=192.168.1.20\n"
+    override suspend fun downloadConfig(): String = """
+# Демо-конфигурация для airMAX Field Tool Stage 3
+# Wireless
+radio.1.freq=5180
+radio.1.ieee_mode=11acvht40
+radio.1.chanbw=40
+radio.1.txpower=20
+radio.1.distance=2400
+radio.1.ack.auto=enabled
+radio.1.country=643
+wireless.1.ssid=SEVER-LINK
+wireless.1.psk=demo_password_123
+wireless.1.hide_ssid=disabled
+wireless.1.wds=disabled
+wireless.1.security=wpa2
+# Network
+netconf.1.ip=192.168.1.20
+netconf.1.netmask=255.255.255.0
+netconf.1.gateway=192.168.1.1
+netconf.1.mtu=1500
+bridge.1.port.1.enabled=true
+bridge.1.port.2.enabled=false
+vlan.1.id=100
+vlan.1.enabled=false
+route.1.dest=0.0.0.0
+route.1.netmask=0.0.0.0
+route.1.gateway=192.168.1.1
+resolv.nameserver.1.ip=8.8.8.8
+resolv.nameserver.2.ip=1.1.1.1
+# Advanced
+airmax.enabled=true
+airmax.priority=2
+# Services
+snmp.enabled=true
+snmp.community=public
+snmp.location=Север-А башня
+snmp.contact=admin@demo.local
+sshd.port=22
+sshd.enabled=true
+httpd.port=443
+httpd.https.enabled=true
+ntpclient.enabled=true
+ntpclient.server.1.name=pool.ntp.org
+syslog.remote.ip=192.168.1.10
+syslog.remote.port=514
+syslog.remote.enabled=false
+discovery.enabled=false
+# System
+users.1.name=ubnt
+users.1.password=demo_pass
+users.1.uid=1000
+system.hostname=sever-tower-a
+system.timezone=Europe/Moscow
+system.date=$(date)
+update.url=https://fw-update.ubnt.com
+update.check.enabled=true
+""".trimIndent()
 
     override suspend fun reboot() {}
 }
