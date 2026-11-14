@@ -6,6 +6,7 @@ import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import java.util.concurrent.TimeUnit
 
 /** airOS 8.x: POST /api/auth → cookie + X-CSRF-ID; опрос /status.cgi. */
@@ -42,7 +43,7 @@ class AirOs8Client(
     private fun needsLogin(r: Resp) =
         r.code == 401 || r.code == 403 || r.redirectsToLogin || r.looksLikeLoginPage
 
-    private suspend fun fetch(path: String, client: OkHttpClient = http, post: FormBody? = null): Resp {
+    private suspend fun fetch(path: String, client: OkHttpClient = http, post: RequestBody? = null): Resp {
         suspend fun once() = client.exec(req(path).apply { if (post != null) post(post) }.build())
         var r = once()
         if (needsLogin(r)) {
@@ -82,9 +83,30 @@ class AirOs8Client(
         return r.body
     }
 
+    override val hasTestMode get() = true
+
+    override suspend fun uploadConfig(cfg: String, testSeconds: Int) {
+        val up = fetch(WriteEndpoints.UPLOAD, post = WriteEndpoints.uploadBody(cfg))
+        if (up.code !in 200..399) throw AirOsError.Protocol("загрузка конфигурации: HTTP ${up.code}")
+        val form = FormBody.Builder().add("testmode", "on").add("testtime", testSeconds.toString()).build()
+        try {
+            val r = fetch(WriteEndpoints.APPLY, post = form)
+            if (r.code !in 200..399) throw AirOsError.Protocol("тест-режим: HTTP ${r.code}")
+        } catch (e: AirOsError.Unreachable) {
+            // Пушка применила конфигурацию и ушла (смена IP/канала) — это нормально для теста.
+        }
+    }
+
+    override suspend fun confirmTest() {
+        val r = fetch(WriteEndpoints.APPLY, post = FormBody.Builder().add("testmode", "off").build())
+        if (r.code !in 200..399) throw AirOsError.Protocol("сохранение: HTTP ${r.code}")
+    }
+
+    override suspend fun cancelTest() = reboot()
+
     override suspend fun reboot() {
         // Без повтора по «странице логина»: после команды пушка может отдать любую HTML-страницу.
-        suspend fun once() = http.exec(req("/reboot.cgi").post(FormBody.Builder().add("reboot", "yes").build()).build())
+        suspend fun once() = http.exec(req(WriteEndpoints.REBOOT).post(FormBody.Builder().add("reboot", "yes").build()).build())
         var r = once()
         if (r.code == 401 || r.code == 403) { login(); r = once() }
         if (r.code !in 200..399) throw AirOsError.Protocol("перезагрузка: HTTP ${r.code}")

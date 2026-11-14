@@ -5,10 +5,37 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /** Демо-пушка: сигнал плавно гуляет в −72…−55 dBm, остальное — правдоподобные константы. */
-class DemoClient(seed: Long = 1) : AirOsClient {
+class DemoClient(seed: Long = 1, private val now: () -> Long = System::currentTimeMillis) : AirOsClient {
     override val version = AirOsVersion.V8
     private val rnd = Random(seed)
     private var t = 0
+
+    /** Сохранённая конфигурация и тестовая (с моментом автоотката). */
+    private var saved = DEMO_CONFIG
+    private var testing: String? = null
+    private var testUntil = 0L
+
+    @Synchronized private fun active(): String {
+        if (testing != null && now() >= testUntil) testing = null // автооткат
+        return testing ?: saved
+    }
+
+    /** Демо в тест-режиме прямо сейчас (для тестов и подсказок). */
+    val inTest: Boolean get() { active(); return testing != null }
+
+    override val hasTestMode get() = true
+
+    override suspend fun uploadConfig(cfg: String, testSeconds: Int) {
+        if (!ConfigBackup.looksLikeConfig(cfg)) throw AirOsError.Protocol("это не конфигурация")
+        synchronized(this) { testing = cfg; testUntil = now() + testSeconds * 1000L }
+    }
+
+    override suspend fun confirmTest() = synchronized(this) {
+        val cfg = testing.takeIf { now() < testUntil } ?: throw AirOsError.Protocol("тест уже закончился")
+        saved = cfg; testing = null
+    }
+
+    override suspend fun cancelTest() = synchronized(this) { testing = null }
 
     override suspend fun login() {}
 
@@ -17,6 +44,7 @@ class DemoClient(seed: Long = 1) : AirOsClient {
         val wave = sin(t / 8.0) * 7.0 + rnd.nextDouble(-1.5, 1.5)
         val signal = (-63.5 + wave).roundToInt().coerceIn(-72, -55)
         val noise = -92
+        val cfg = SystemConfig.parse(active())
         return DeviceStatus(
             version = AirOsVersion.V8,
             hostname = "Демо — Север A",
@@ -24,10 +52,10 @@ class DemoClient(seed: Long = 1) : AirOsClient {
             firmware = "v8.7.11",
             uptimeSec = 86_400L + t,
             mode = "ap-ptp",
-            essid = "SEVER-LINK",
-            frequencyMhz = 5180,
-            channelWidthMhz = 40,
-            txPowerDbm = 20,
+            essid = cfg["wireless.1.ssid"] ?: "SEVER-LINK",
+            frequencyMhz = cfg["radio.1.freq"]?.toIntOrNull() ?: 5180,
+            channelWidthMhz = cfg["radio.1.chanbw"]?.toIntOrNull() ?: 40,
+            txPowerDbm = cfg["radio.1.txpower"]?.toIntOrNull() ?: 20,
             distanceM = 2400,
             signalDbm = signal,
             noiseDbm = noise,
@@ -66,7 +94,12 @@ class DemoClient(seed: Long = 1) : AirOsClient {
         )
     }
 
-    override suspend fun downloadConfig(): String = """
+    override suspend fun downloadConfig(): String = active()
+
+    override suspend fun reboot() { cancelTest() }
+}
+
+private val DEMO_CONFIG = """
 # Демо-конфигурация для airMAX Field Tool Stage 3
 # Wireless
 radio.1.freq=5180
@@ -119,10 +152,6 @@ users.1.password=demo_pass
 users.1.uid=1000
 system.hostname=sever-tower-a
 system.timezone=Europe/Moscow
-system.date=$(date)
 update.url=https://fw-update.ubnt.com
 update.check.enabled=true
-""".trimIndent()
-
-    override suspend fun reboot() {}
-}
+""".trimIndent() + "\n"

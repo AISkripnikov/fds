@@ -25,6 +25,28 @@ interface AirOsClient {
     /** Полный system.cfg. Бросает Protocol, если пришла не конфигурация. */
     suspend fun downloadConfig(): String = throw AirOsError.Protocol("скачивание конфигурации не поддерживается")
     suspend fun reboot(): Unit = throw AirOsError.Protocol("перезагрузка не поддерживается")
+
+    // --- Запись (этап 4): только через тест-режим с автооткатом ---
+
+    /** Пушка умеет тест-режим: применённая конфигурация сама откатится, если её не подтвердить. */
+    val hasTestMode: Boolean get() = false
+
+    /** Сколько реально продлится тест при запросе [requested] секунд (airOS 6 — фиксированный таймер). */
+    fun testDurationFor(requested: Int): Int = requested
+
+    /**
+     * Загружает конфигурацию и включает тест-режим на [testSeconds] секунд.
+     * Ошибка загрузки — исключение (на пушке ничего не поменялось).
+     * Обрыв связи после команды теста исключением не считается: новая конфигурация
+     * могла уже примениться (например, сменился IP).
+     */
+    suspend fun uploadConfig(cfg: String, testSeconds: Int): Unit = throw AirOsError.Protocol("запись не поддерживается")
+
+    /** Сохранить тестовую конфигурацию навсегда. */
+    suspend fun confirmTest(): Unit = throw AirOsError.Protocol("запись не поддерживается")
+
+    /** Откатить тест сейчас, не дожидаясь таймера. */
+    suspend fun cancelTest(): Unit = throw AirOsError.Protocol("запись не поддерживается")
 }
 
 /** Все обращения к пушке по очереди: опрос и инструменты не мешают друг другу (одна сессия). */
@@ -38,4 +60,9 @@ class SerializedClient(private val inner: AirOsClient) : AirOsClient {
     override suspend fun survey() = mutex.withLock { inner.survey() }
     override suspend fun downloadConfig() = mutex.withLock { inner.downloadConfig() }
     override suspend fun reboot() = mutex.withLock { inner.reboot() }
+    override val hasTestMode get() = inner.hasTestMode
+    override fun testDurationFor(requested: Int) = inner.testDurationFor(requested)
+    override suspend fun uploadConfig(cfg: String, testSeconds: Int) = mutex.withLock { inner.uploadConfig(cfg, testSeconds) }
+    override suspend fun confirmTest() = mutex.withLock { inner.confirmTest() }
+    override suspend fun cancelTest() = mutex.withLock { inner.cancelTest() }
 }

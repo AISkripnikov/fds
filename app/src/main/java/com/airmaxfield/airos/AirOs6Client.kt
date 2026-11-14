@@ -7,6 +7,7 @@ import okhttp3.HttpUrl
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import java.util.concurrent.TimeUnit
 
 /**
@@ -42,7 +43,7 @@ class AirOs6Client(
     private fun needsLogin(r: Resp) =
         r.code == 401 || r.code == 403 || r.redirectsToLogin || r.looksLikeLoginPage
 
-    private suspend fun fetch(path: String, client: OkHttpClient = http, post: FormBody? = null): Resp {
+    private suspend fun fetch(path: String, client: OkHttpClient = http, post: RequestBody? = null): Resp {
         suspend fun once() = client.exec(
             Request.Builder().url(baseUrl.resolve(path)!!).apply { if (post != null) post(post) }.build()
         )
@@ -82,9 +83,31 @@ class AirOs6Client(
         return body
     }
 
+    override val hasTestMode get() = true
+
+    override fun testDurationFor(requested: Int) = WriteEndpoints.V6_TEST_SECONDS
+
+    override suspend fun uploadConfig(cfg: String, testSeconds: Int) {
+        val up = fetch(WriteEndpoints.UPLOAD, post = WriteEndpoints.uploadBody(cfg))
+        if (up.code !in 200..399) throw AirOsError.Protocol("загрузка конфигурации: HTTP ${up.code}")
+        try {
+            val r = fetch("${WriteEndpoints.APPLY}?testmode=on")
+            if (r.code !in 200..399) throw AirOsError.Protocol("тест-режим: HTTP ${r.code}")
+        } catch (e: AirOsError.Unreachable) {
+            // Конфигурация применилась и связь ушла — для теста это нормально.
+        }
+    }
+
+    override suspend fun confirmTest() {
+        val r = fetch(WriteEndpoints.APPLY)
+        if (r.code !in 200..399) throw AirOsError.Protocol("сохранение: HTTP ${r.code}")
+    }
+
+    override suspend fun cancelTest() = reboot()
+
     override suspend fun reboot() {
         suspend fun once() = http.exec(
-            Request.Builder().url(baseUrl.resolve("/reboot.cgi")!!)
+            Request.Builder().url(baseUrl.resolve(WriteEndpoints.REBOOT)!!)
                 .post(FormBody.Builder().add("reboot", "yes").build()).build()
         )
         var r = once()

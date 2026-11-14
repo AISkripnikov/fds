@@ -25,12 +25,15 @@ class DeviceHttpTest {
 
     @After fun tearDown() = server.shutdown()
 
+    /** Сертификат выписан на 127.0.0.1 — не полагаемся на то, как MockWebServer назовёт хост. */
+    private fun url(path: String) = server.url(path).newBuilder().host("127.0.0.1").build()
+
     @Test fun self_signed_accepted_for_allowed_host_and_cookies_kept() {
         server.enqueue(MockResponse().addHeader("Set-Cookie", "AIROS_SESSIONID=abc; Path=/").setBody("one"))
         server.enqueue(MockResponse().setBody("two"))
         val http = deviceHttpClient(allowLoopback = true)
-        http.newCall(Request.Builder().url(server.url("/a")).build()).execute().use { assertEquals("one", it.body!!.string()) }
-        http.newCall(Request.Builder().url(server.url("/b")).build()).execute().use { assertEquals("two", it.body!!.string()) }
+        http.newCall(Request.Builder().url(url("/a")).build()).execute().use { assertEquals("one", it.body!!.string()) }
+        http.newCall(Request.Builder().url(url("/b")).build()).execute().use { assertEquals("two", it.body!!.string()) }
         server.takeRequest()
         assertEquals("AIROS_SESSIONID=abc", server.takeRequest().getHeader("Cookie"))
     }
@@ -39,7 +42,7 @@ class DeviceHttpTest {
         server.enqueue(MockResponse().setBody("x"))
         val http = deviceHttpClient(allowLoopback = false)
         try {
-            http.newCall(Request.Builder().url(server.url("/a")).build()).execute().close()
+            http.newCall(Request.Builder().url(url("/a")).build()).execute().close()
             fail("expected SSLException")
         } catch (e: SSLException) { /* ok */ }
     }
