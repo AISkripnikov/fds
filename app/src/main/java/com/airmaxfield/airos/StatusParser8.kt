@@ -37,6 +37,7 @@ object StatusParser8 {
             linkScore = linkScore(sta),
             airtimePercent = w?.obj("polling")?.int("use"),
             remote = sta?.obj("remote")?.let(::remoteSide),
+            antennaGainDbi = w?.int("antenna_gain"),
         )
     }
 
@@ -73,6 +74,8 @@ object StatusParser8 {
             distanceM = r.int("distance"),
             uptimeSec = r.long("uptime"),
             lanSpeed = eth?.let { e -> if (e.str("plugged") == "false") "нет линка" else e.int("speed")?.let { "$it Мбит/с" } },
+            antennaGainDbi = r.int("antenna_gain"),
+            cableLossDb = r.int("cable_loss"),
         )
     }
 }

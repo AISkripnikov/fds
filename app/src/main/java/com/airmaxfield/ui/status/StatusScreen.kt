@@ -48,6 +48,7 @@ fun StatusScreen(
     modifier: Modifier = Modifier,
     /** Подключиться ко второй стороне (null — кнопку не показывать). */
     onOpenRemote: ((com.airmaxfield.airos.RemoteSide) -> Unit)? = null,
+    onAlign: (() -> Unit)? = null,
 ) {
     val c = LocalAirColors.current
     val s = ui.status
@@ -57,6 +58,11 @@ fun StatusScreen(
     ) {
         ErrorBanner(ui, staleSec, onEditPassword, onSaveDump)
         SignalCard(s)
+        if (onAlign != null) {
+            Button(onClick = onAlign, modifier = Modifier.fillMaxWidth()) {
+                Text("Режим юстировки — куда крутить", fontSize = 16.sp)
+            }
+        }
         TileGrid(s)
         SignalGraph(ui.history)
         AirCard(Modifier.fillMaxWidth()) {

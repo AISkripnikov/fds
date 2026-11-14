@@ -346,6 +346,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
     val ui by s.poller.state.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var toneOn by rememberSaveable { mutableStateOf(false) }
+    var aligning by rememberSaveable { mutableStateOf(false) }
     val ctx = LocalContext.current
     val tone = remember { AlignmentTone(ctx) }
     DisposableEffect(Unit) { onDispose { tone.release() } }
@@ -412,13 +413,20 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
     ) { pad ->
         var firstLoginSkipped by rememberSaveable(s) { mutableStateOf(false) }
         val fl = s.firstLogin
-        if (fl != null && !firstLoginSkipped) {
+        if (aligning) {
+            androidx.activity.compose.BackHandler { aligning = false }
+            Column(Modifier.fillMaxSize().padding(pad)) {
+                androidx.compose.material3.TextButton(onClick = { aligning = false }) { Text("← К статусу") }
+                com.airmaxfield.ui.status.AlignScreen(ui, toneOn, { toneOn = it })
+            }
+        } else if (fl != null && !firstLoginSkipped) {
             val profiles by vm.profiles.collectAsState()
             com.airmaxfield.ui.setup.FirstLoginScreen(fl, onSkip = { firstLoginSkipped = true }, modifier = Modifier.padding(pad),
                 profiles = profiles)
         } else if (tab == 0) {
             StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
-                modifier = Modifier.padding(pad), onOpenRemote = if (s.demo) null else vm::openRemote)
+                modifier = Modifier.padding(pad), onOpenRemote = if (s.demo) null else vm::openRemote,
+                onAlign = { aligning = true })
         } else if (tab == 1) {
             val st by s.tools.stations.collectAsState()
             DisposableEffect(s) { s.tools.startStations(); onDispose { s.tools.stopStations() } }

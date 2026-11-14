@@ -43,7 +43,7 @@ class BridgeTest {
         assertEquals("secret-key-1", a["aaa.1.wpa.psk"])
         assertEquals("secret-key-1", b["wpasupplicant.profile.1.network.1.psk"])
         assertEquals("5500", a["radio.1.freq"])
-        assertEquals("5180", b["radio.1.freq"]) // станция частоту не задаёт — сканирует
+        assertEquals("5500", b["radio.1.freq"]) // станция: та же частота, что у AP (как в живом конфиге)
         // адрес — на интерфейсе br0, не на eth0
         assertEquals("192.168.1.21", a["netconf.3.ip"]); assertEquals("192.168.1.22", b["netconf.3.ip"])
         assertEquals("0.0.0.0", a["netconf.1.ip"])
@@ -188,5 +188,22 @@ class BridgeTest {
         assertFalse(o.prepare(relinked(nd, BridgeRole.STATION), relinked(fd, BridgeRole.AP)))
         assertTrue(o.problem.value!!.contains("Ближняя"))
         assertFalse(fd.inTest)
+    }
+
+    @Test fun real_station_config_relink_updates_scan_list_and_center_freq() {
+        val cfg = SystemConfig.parse(com.airmaxfield.airos.fixture("airos8/system_lb5ac_879_sta.cfg"))
+        assertEquals(BridgeRole.STATION, BridgePlanner.roleOf(cfg))
+        assertEquals("netconf.3", BridgePlanner.mgmtNetconf(cfg))
+        val next = BridgePlanner.relink(cfg, BridgeRole.STATION, LinkParams("NEW", "new-secret-1", "511", 5500, 20))
+        assertEquals("5500", next["radio.1.scan_list.channels"]) // иначе станция не найдёт AP
+        assertEquals("5500", next["radio.1.center.1.freq"])
+        assertEquals("5500", next["radio.1.freq"])
+        assertEquals("NEW", next["wpasupplicant.profile.1.network.1.ssid"])
+        assertEquals("new-secret-1", next["wpasupplicant.profile.1.network.1.psk"])
+        assertEquals("20", next["radio.1.chanbw"])
+        // всё остальное, включая комментарии ### PART ###, — байт-в-байт
+        val changed = cfg.diff(next).map { it.key }.toSet()
+        assertTrue(changed.all { it.startsWith("radio.") || it.startsWith("wireless.") || it.startsWith("wpasupplicant.") })
+        assertTrue(next.raw.startsWith("### PART ###"))
     }
 }

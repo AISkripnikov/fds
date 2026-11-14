@@ -39,7 +39,9 @@ data class LinkParams(
 enum class BridgeRole(val title: String) { AP("A — точка доступа (AP PtP)"), STATION("B — станция (Station)") }
 
 /**
- * Ключи system.cfg, которые пишет мастер. Угаданы по airOS 6/8 — НЕ ПРОВЕРЕНЫ на живых пушках;
+ * Ключи system.cfg, которые пишет мастер. Сверены с конфигурацией живого LiteBeam 5AC (airOS 8.7.9, станция):
+ * radio.1.mode, wireless.1.wds.status, wpasupplicant.profile.1.network.1.*, aaa.1.wpa.psk, radio.countrycode,
+ * netconf.N(br0) — совпали. Запись на пушку ещё не проверена;
  * ошибка здесь безопасна (тест-режим откатит), но мост не поднимется. Правка — только здесь.
  */
 object BridgeKeys {
@@ -50,6 +52,9 @@ object BridgeKeys {
     const val WDS = "wireless.1.wds.status"
     const val FREQ = "radio.1.freq"
     const val CHANBW = "radio.1.chanbw"
+    const val CENTER_FREQ = "radio.1.center.1.freq"
+    const val SCAN_LIST_STATUS = "radio.1.scan_list.status"
+    const val SCAN_LIST_CHANNELS = "radio.1.scan_list.channels"
     const val TXPOWER = "radio.1.txpower"
     val COUNTRY = listOf("radio.countrycode", "radio.1.countrycode")
     /** Ключ в стиле демо-конфигурации; пишем, только если он уже есть. */
@@ -134,6 +139,15 @@ object BridgePlanner {
         m[BridgeKeys.CHANBW] = link.chanbwMhz.toString()
         BridgeKeys.COUNTRY.forEach { m[it] = link.countryCode }
         if (base[BridgeKeys.LEGACY_PSK] != null) m[BridgeKeys.LEGACY_PSK] = link.psk
+        link.freqMhz?.let { f ->
+            // airOS 8 хранит центральную частоту отдельно (на живом LiteBeam она равна freq).
+            if (base[BridgeKeys.CENTER_FREQ] != null) m[BridgeKeys.CENTER_FREQ] = f.toString()
+            if (role == BridgeRole.STATION) {
+                if (base[BridgeKeys.FREQ] != null) m[BridgeKeys.FREQ] = f.toString()
+                // Станция с ограниченным списком сканирования не найдёт AP на новой частоте.
+                if (base[BridgeKeys.SCAN_LIST_STATUS] == "enabled") m[BridgeKeys.SCAN_LIST_CHANNELS] = f.toString()
+            }
+        }
         when (role) {
             BridgeRole.AP -> {
                 link.freqMhz?.let { m[BridgeKeys.FREQ] = it.toString() }

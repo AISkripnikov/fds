@@ -21,7 +21,7 @@ object FieldSpec {
     private val IPV4 = Regex("""^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$""")
     private fun k(p: String) = Regex(p)
 
-    private val WIDTHS = listOf(5, 10, 20, 30, 40, 50, 60, 80).map { "$it" to "$it МГц" }
+    private val WIDTHS = listOf("0" to "Авто (как у точки доступа)") + listOf(5, 10, 20, 30, 40, 50, 60, 80).map { "$it" to "$it МГц" }
     private val MODES = listOf("master" to "Точка доступа (AP)", "managed" to "Станция (Station)")
 
     private val rules: List<Pair<Regex, FieldType>> = listOf(

@@ -33,6 +33,8 @@ data class DeviceStatus(
     val airtimePercent: Int? = null,
     /** Вторая сторона линка, как её видит эта пушка (без подключения к ней). */
     val remote: RemoteSide? = null,
+    /** Усиление антенны, как оно задано в настройках пушки, dBi. */
+    val antennaGainDbi: Int? = null,
 ) {
     val snrDb: Int? get() = if (signalDbm != null && noiseDbm != null) signalDbm - noiseDbm else null
 }
@@ -51,4 +53,6 @@ data class RemoteSide(
     val distanceM: Int? = null,
     val uptimeSec: Long? = null,
     val lanSpeed: String? = null,
+    val antennaGainDbi: Int? = null,
+    val cableLossDb: Int? = null,
 )
