@@ -5,6 +5,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import com.airmaxfield.airos.DangerousKeys
+import com.airmaxfield.ui.theme.LocalAirColors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +26,8 @@ import com.airmaxfield.ui.components.AirCard
 
 /**
  * Экран настроек устройства с группировкой по секциям.
- * Все настройки только для чтения.
+ * Нажатие на поле открывает правку; правки копятся в черновике и применяются вместе
+ * через тест-режим (кнопка «Применить»).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,6 +37,13 @@ fun SettingsScreen(
     error: String?,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    drafts: Map<String, String> = emptyMap(),
+    writable: Boolean = false,
+    canEdit: (String) -> Boolean = { false },
+    onEdit: (key: String, value: String) -> Unit = { _, _ -> },
+    onClearDraft: (String) -> Unit = {},
+    onClearAll: () -> Unit = {},
+    onApply: () -> Unit = {},
 ) {
     var selectedSection by remember { mutableStateOf(0) }
     val sections = listOf("Беспроводная", "Сеть", "Дополнительно", "Сервисы", "Система")
@@ -103,6 +118,14 @@ fun SettingsScreen(
                     else -> emptyList()
                 }
 
+                if (!writable) {
+                    Text(
+                        "У этой пушки нет тест-режима — без автоотката запись опасна, поэтому настройки только для просмотра.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
                 if (entries.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -115,8 +138,11 @@ fun SettingsScreen(
                         )
                     }
                 } else {
-                    SettingsSection(entries = entries)
+                    Box(Modifier.weight(1f)) {
+                        SettingsSection(entries = entries, drafts = drafts, canEdit = canEdit, onEdit = onEdit, onClearDraft = onClearDraft)
+                    }
                 }
+                if (drafts.isNotEmpty()) DraftBar(drafts.size, onClearAll, onApply)
             }
         }
     }
@@ -124,8 +150,15 @@ fun SettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsSection(entries: List<CfgEntry>) {
+private fun SettingsSection(
+    entries: List<CfgEntry>,
+    drafts: Map<String, String>,
+    canEdit: (String) -> Boolean,
+    onEdit: (String, String) -> Unit,
+    onClearDraft: (String) -> Unit,
+) {
     var helpEntry by remember { mutableStateOf<Pair<CfgEntry, FieldHelp>?>(null) }
+    var editing by remember { mutableStateOf<CfgEntry?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -135,11 +168,24 @@ private fun SettingsSection(entries: List<CfgEntry>) {
         items(entries) { entry ->
             SettingCard(
                 entry = entry,
+                draft = drafts[entry.key],
+                editable = canEdit(entry.key),
+                onClick = { editing = entry },
                 onShowHelp = { help ->
                     helpEntry = entry to help
                 }
             )
         }
+    }
+
+    editing?.let { e ->
+        EditDialog(
+            entry = e,
+            draft = drafts[e.key],
+            onSave = { v -> onEdit(e.key, v); editing = null },
+            onRevert = { onClearDraft(e.key); editing = null },
+            onDismiss = { editing = null },
+        )
     }
 
     // Bottom sheet для справки
@@ -155,14 +201,18 @@ private fun SettingsSection(entries: List<CfgEntry>) {
 @Composable
 private fun SettingCard(
     entry: CfgEntry,
+    draft: String?,
+    editable: Boolean,
+    onClick: () -> Unit,
     onShowHelp: (FieldHelp) -> Unit,
 ) {
     val help = HelpContent.forKey(entry.key)
     val isSensitive = SystemConfig.isSensitive(entry.key)
-    val displayValue = if (isSensitive) "••••••" else entry.value
+    val value = draft ?: entry.value
+    val displayValue = if (isSensitive) "••••••" else value
 
     AirCard(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().then(if (editable) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Row(
             modifier = Modifier
@@ -171,11 +221,20 @@ private fun SettingCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = help?.title ?: entry.key,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = help?.title ?: entry.key,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (draft != null) {
+                        Text(
+                            "  черновик",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = LocalAirColors.current.fair,
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = displayValue,
@@ -262,4 +321,73 @@ private fun HelpSheet(
             )
         }
     }
+}
+
+@Composable
+private fun DraftBar(count: Int, onClearAll: () -> Unit, onApply: () -> Unit) {
+    val c = LocalAirColors.current
+    Surface(color = c.card, tonalElevation = 3.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Изменений: $count", color = c.text, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClearAll) { Text("Сбросить") }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onApply) { Text("Применить") }
+        }
+    }
+}
+
+@Composable
+private fun EditDialog(
+    entry: CfgEntry,
+    draft: String?,
+    onSave: (String) -> Unit,
+    onRevert: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val c = LocalAirColors.current
+    val help = HelpContent.forKey(entry.key)
+    val sensitive = SystemConfig.isSensitive(entry.key)
+    val danger = DangerousKeys.kind(entry.key)
+    var value by remember(entry.key) { mutableStateOf(draft ?: entry.value) }
+    var shown by remember { mutableStateOf(!sensitive) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = c.card,
+        title = { Text(help?.title ?: entry.key, color = c.text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(entry.key, fontFamily = FontFamily.Monospace, color = c.muted, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { v -> value = v.replace("\n", "") },
+                    singleLine = true,
+                    visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = if (sensitive) {
+                        {
+                            IconButton(onClick = { shown = !shown }) {
+                                Icon(if (shown) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Показать")
+                            }
+                        }
+                    } else null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (!sensitive) Text("Сейчас на пушке: ${entry.value}", color = c.muted, style = MaterialTheme.typography.bodySmall)
+                danger?.let {
+                    Text("⚠ Опасное поле (${it.title}): после смены связь может пропасть. Запись пойдёт в тест-режиме с автооткатом.",
+                        color = c.fair, style = MaterialTheme.typography.bodySmall)
+                }
+                help?.let { Text(it.description, color = c.text, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(value) }) { Text("В черновик") } },
+        dismissButton = {
+            Row {
+                if (draft != null) TextButton(onClick = onRevert) { Text("Вернуть как было") }
+                TextButton(onClick = onDismiss) { Text("Отмена") }
+            }
+        },
+    )
 }

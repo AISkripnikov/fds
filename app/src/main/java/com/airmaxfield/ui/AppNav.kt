@@ -95,8 +95,10 @@ fun AirmaxApp(vm: AppViewModel = viewModel()) {
     }
     AirmaxTheme(dark = !light) {
         val session by vm.session.collectAsState()
+        val wizard by vm.wizard.collectAsState()
         val s = session
-        if (s == null) DevicesRoot(vm) else SessionRoot(vm, s, onSaveDump)
+        val w = wizard
+        if (w != null) WizardRoot(vm, w) else if (s == null) DevicesRoot(vm) else SessionRoot(vm, s, onSaveDump)
     }
 }
 
@@ -130,6 +132,21 @@ private fun ThemeMenu(vm: AppViewModel, extra: @Composable (close: () -> Unit) -
 }
 
 @Composable
+private fun WizardRoot(vm: AppViewModel, w: com.airmaxfield.ui.setup.BridgeWizardController) {
+    val c = LocalAirColors.current
+    val profiles by vm.profiles.collectAsState()
+    androidx.activity.compose.BackHandler { vm.closeWizard() }
+    Scaffold(containerColor = c.bg, topBar = {
+        TopBar("Мастер моста", "Две пушки с нуля",
+            nav = { IconButton(onClick = vm::closeWizard) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад", tint = c.text) } },
+            menu = { ThemeMenu(vm) })
+    }) { pad ->
+        com.airmaxfield.ui.setup.BridgeWizardScreen(w, profiles, vm::subnetWarning, onClose = vm::closeWizard,
+            modifier = Modifier.padding(pad))
+    }
+}
+
+@Composable
 private fun DevicesRoot(vm: AppViewModel) {
     val c = LocalAirColors.current
     val networks by vm.networks.collectAsState()
@@ -158,7 +175,10 @@ private fun DevicesRoot(vm: AppViewModel) {
 
     Scaffold(containerColor = c.bg, topBar = {
         TopBar("airMAX Поле", "Выберите пушку", nav = null, menu = {
-            ThemeMenu(vm) { close -> DropdownMenuItem(text = { Text("Справочник") }, onClick = { close(); showHelp = true }) }
+            ThemeMenu(vm) { close ->
+                DropdownMenuItem(text = { Text("Справочник") }, onClick = { close(); showHelp = true })
+                DropdownMenuItem(text = { Text("Мастер моста") }, onClick = { close(); vm.openWizard() })
+            }
         })
     }) { pad ->
         DevicesScreen(
@@ -167,6 +187,7 @@ private fun DevicesRoot(vm: AppViewModel) {
             onPick = { vm.clearConnectError(); target = it },
             onDelete = { vm.deleteDevice(it.id) },
             onDemo = vm::demo,
+            onBridgeWizard = vm::openWizard,
             modifier = Modifier.padding(pad),
         )
     }
@@ -180,6 +201,63 @@ private fun DevicesRoot(vm: AppViewModel) {
     // Закрыть окно после успешного подключения.
     val session by vm.session.collectAsState()
     LaunchedEffect(session) { if (session != null) target = null }
+}
+
+/** Блок «Мост» на вкладке инструментов: смена канала на обеих сторонах. */
+@Composable
+private fun PairBlock(vm: AppViewModel, s: Session) {
+    val c = LocalAirColors.current
+    val devices by vm.devices.collectAsState()
+    val far = remember(devices, s) { vm.pairOf(s) } ?: return
+    val config by s.settings.config.collectAsState()
+    var ask by remember { mutableStateOf(false) }
+    LaunchedEffect(s) { if (s.settings.config.value == null) s.settings.load() }
+    Text("Мост", color = c.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+    com.airmaxfield.ui.components.AirCard(Modifier.fillMaxWidth()) {
+        Text("Вторая сторона: ${far.name} (${far.host})", color = c.text, fontSize = 15.sp)
+        Text("Частота, ширина, SSID, ключ и страна должны совпадать на обеих пушках. Меняйте их только здесь — " +
+            "сначала дальняя, потом ближняя, обе в тест-режиме.", color = c.muted, fontSize = 13.sp)
+        androidx.compose.material3.Button(onClick = { ask = true }, enabled = config != null && s.settings.writable,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Изменить канал на обеих сторонах") }
+    }
+    val cfg = config
+    if (ask && cfg != null) {
+        com.airmaxfield.ui.setup.RelinkDialog(
+            initial = com.airmaxfield.apply.BridgePlanner.linkOf(cfg),
+            onSubmit = { link -> ask = false; vm.startRelink(s, link) },
+            onDismiss = { ask = false },
+        )
+    }
+}
+
+@Composable
+private fun BothEndsDialog(vm: AppViewModel, o: com.airmaxfield.apply.BothEndsOrchestrator) {
+    val far by o.farApply.state.collectAsState()
+    val near by o.nearApply.state.collectAsState()
+    val problem by o.problem.collectAsState()
+    val busy by o.busy.collectAsState()
+    val active = listOf(far, near).any {
+        it !is com.airmaxfield.apply.ApplyState.Idle && !it.finished
+    }
+    if (!busy && !active && problem != null && listOf(far, near).none { it is com.airmaxfield.apply.ApplyState.Confirmed }) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = vm::closeRelink,
+            containerColor = LocalAirColors.current.card,
+            title = { Text("Изменение не выполнено") },
+            text = { Text(problem!!) },
+            confirmButton = { androidx.compose.material3.Button(onClick = vm::closeRelink) { Text("Понятно") } },
+        )
+        return
+    }
+    val farDone = far is com.airmaxfield.apply.ApplyState.Confirmed
+    com.airmaxfield.ui.apply.ApplyProgressDialog(
+        rows = listOf(com.airmaxfield.ui.apply.ApplyRow("Дальняя пушка", far), com.airmaxfield.ui.apply.ApplyRow("Ближняя пушка", near)),
+        canConfirm = if (farDone) (near as? com.airmaxfield.apply.ApplyState.Testing)?.reachable == true else o.canConfirm(),
+        confirmLabel = if (farDone) "Сохранить ближнюю" else "Сохранить на обеих",
+        onConfirm = o::confirm, onRollback = o::rollback, onClose = vm::closeRelink,
+        confirmedText = "Обе пушки сохранены с новыми параметрами линка.",
+        note = problem,
+    )
 }
 
 @Composable
@@ -201,6 +279,9 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
     LaunchedEffect(ui.status?.signalDbm, fresh) {
         tone.update(if (fresh) ui.status?.signalDbm else null)
     }
+
+    val bothEnds by vm.bothEnds.collectAsState()
+    bothEnds?.let { BothEndsDialog(vm, it) }
 
     val connected = fresh && ui.status != null
     val subtitle = listOfNotNull(ui.status?.model, s.host.takeIf { !s.demo }).joinToString(" · ").ifEmpty { s.host }
@@ -238,7 +319,11 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
             }
         },
     ) { pad ->
-        if (tab == 0) {
+        var firstLoginSkipped by rememberSaveable(s) { mutableStateOf(false) }
+        val fl = s.firstLogin
+        if (fl != null && !firstLoginSkipped) {
+            com.airmaxfield.ui.setup.FirstLoginScreen(fl, onSkip = { firstLoginSkipped = true }, modifier = Modifier.padding(pad))
+        } else if (tab == 0) {
             StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
                 modifier = Modifier.padding(pad))
         } else if (tab == 1) {
@@ -263,16 +348,47 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 onExport = { f -> exportFile = f; exporter.launch(f.name) },
                 onDelete = s.tools::deleteBackup, onReboot = s.tools::reboot,
                 onRefreshBackups = s.tools::refreshBackups, modifier = Modifier.padding(pad),
+                extra = { PairBlock(vm, s) },
             )
         } else if (tab == 2) {
             val config by s.settings.config.collectAsState()
             val loading by s.settings.loading.collectAsState()
             val error by s.settings.error.collectAsState()
-            DisposableEffect(s) { s.settings.load(); onDispose { } }
+            val drafts by s.settings.drafts.collectAsState()
+            val apply by s.settings.apply.collectAsState()
+            var review by remember { mutableStateOf(false) }
+            DisposableEffect(s) { if (s.settings.config.value == null) s.settings.load(); onDispose { } }
             com.airmaxfield.ui.settings.SettingsScreen(
                 config, loading, error, onRetry = s.settings::retry,
-                modifier = Modifier.padding(pad)
+                modifier = Modifier.padding(pad),
+                drafts = drafts, writable = s.settings.writable, canEdit = s.settings::canEdit,
+                onEdit = s.settings::setDraft, onClearDraft = s.settings::clearDraft,
+                onClearAll = s.settings::clearDrafts, onApply = { review = true },
             )
+            if (review) {
+                val changes = remember(drafts, config) { s.settings.changes() }
+                val newHost = s.settings.newHost()
+                val extra = newHost?.let { h ->
+                    "Новый адрес управления: $h. " + (vm.subnetWarning(h)
+                        ?: "После применения приложение будет искать пушку по новому адресу.")
+                }
+                com.airmaxfield.ui.apply.ChangesDialog(
+                    title = "Применить изменения?", changes = changes,
+                    warnings = com.airmaxfield.apply.Management.warnings(changes), extra = extra,
+                    testSeconds = s.client.testDurationFor(com.airmaxfield.apply.SafeApply.DEFAULT_TEST_SECONDS),
+                    onConfirm = { review = false; s.settings.applyDrafts() },
+                    onDismiss = { review = false },
+                )
+            }
+            apply?.let { sa ->
+                val st by sa.state.collectAsState()
+                com.airmaxfield.ui.apply.ApplyProgressDialog(
+                    rows = listOf(com.airmaxfield.ui.apply.ApplyRow("", st)),
+                    canConfirm = (st as? com.airmaxfield.apply.ApplyState.Testing)?.reachable == true,
+                    confirmLabel = "Сохранить навсегда",
+                    onConfirm = sa::confirm, onRollback = sa::rollback, onClose = s.settings::dismissApply,
+                )
+            }
         } else if (tab == 4) {
             com.airmaxfield.ui.help.HelpScreen(modifier = Modifier.padding(pad))
         } else {

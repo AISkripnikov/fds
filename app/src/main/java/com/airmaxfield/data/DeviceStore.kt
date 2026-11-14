@@ -14,6 +14,8 @@ data class SavedDevice(
     val host: String,
     val user: String,
     val pass: String,
+    /** Общий id у двух сторон одного моста (A↔B). */
+    val pairId: String? = null,
 )
 
 /** Сохранённые пушки. Пароли — только в EncryptedSharedPreferences. */
@@ -40,7 +42,22 @@ class DeviceStore(ctx: Context) {
         prefs.edit().putString(KEY, json.encodeToString(all().filterNot { it.id == id })).apply()
     }
 
-    private companion object { const val KEY = "list" }
+    /** Шаблоны мостов (в них ключ WPA2 и пароль — поэтому тоже в зашифрованном хранилище). */
+    @Synchronized fun profiles(): List<com.airmaxfield.apply.BridgeProfile> =
+        prefs.getString(PROFILES, null)
+            ?.let { runCatching { json.decodeFromString<List<com.airmaxfield.apply.BridgeProfile>>(it) }.getOrNull() }
+            .orEmpty()
+
+    @Synchronized fun saveProfile(p: com.airmaxfield.apply.BridgeProfile) {
+        val list = profiles().filterNot { it.name == p.name } + p
+        prefs.edit().putString(PROFILES, json.encodeToString(list)).apply()
+    }
+
+    @Synchronized fun deleteProfile(name: String) {
+        prefs.edit().putString(PROFILES, json.encodeToString(profiles().filterNot { it.name == name })).apply()
+    }
+
+    private companion object { const val KEY = "list"; const val PROFILES = "bridge_profiles" }
 }
 
 /** Мелкие настройки приложения (не секретные). */

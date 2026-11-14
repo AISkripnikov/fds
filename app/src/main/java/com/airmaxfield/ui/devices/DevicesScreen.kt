@@ -51,6 +51,7 @@ fun DevicesScreen(
     onDelete: (SavedDevice) -> Unit,
     onDemo: () -> Unit,
     modifier: Modifier = Modifier,
+    onBridgeWizard: () -> Unit = {},
 ) {
     val c = LocalAirColors.current
     Column(
@@ -94,6 +95,9 @@ fun DevicesScreen(
         OutlinedButton(onClick = { onPick(ConnectTarget("")) }, modifier = Modifier.fillMaxWidth()) {
             Text("Другой адрес…", fontSize = 15.sp)
         }
+        OutlinedButton(onClick = onBridgeWizard, modifier = Modifier.fillMaxWidth()) {
+            Text("Мастер моста: две пушки с нуля", fontSize = 15.sp)
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Section("Найденные в сети", Modifier.weight(1f))
@@ -115,7 +119,8 @@ fun DevicesScreen(
         Section("Сохранённые")
         if (saved.isEmpty()) Text("Пока пусто. Отметьте «Сохранить» при подключении.", color = c.muted, fontSize = 14.sp)
         saved.forEach { d ->
-            DeviceRow(d.name, "${d.host} · ${d.user}", onClick = { onPick(ConnectTarget(d.host, d.name, d.user, d.pass)) },
+            val partner = d.pairId?.let { pid -> saved.firstOrNull { it.pairId == pid && it.id != d.id } }
+            DeviceRow(d.name, "${d.host} · ${d.user}" + (partner?.let { " · мост ↔ ${it.name}" } ?: ""), onClick = { onPick(ConnectTarget(d.host, d.name, d.user, d.pass)) },
                 trailing = { IconButton(onClick = { onDelete(d) }) { Icon(Icons.Filled.Delete, "Удалить", tint = c.muted) } })
         }
 

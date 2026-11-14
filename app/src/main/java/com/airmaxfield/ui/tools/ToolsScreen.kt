@@ -58,6 +58,8 @@ fun ToolsScreen(
     onReboot: () -> Unit,
     onRefreshBackups: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Дополнительный блок сверху (мост: изменения на обеих сторонах). */
+    extra: @Composable () -> Unit = {},
 ) {
     val c = LocalAirColors.current
     var askSurvey by remember { mutableStateOf(false) }
@@ -73,6 +75,8 @@ fun ToolsScreen(
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             Text("  $it", color = c.muted, fontSize = 14.sp)
         } }
+
+        extra()
 
         // ── Обзор эфира
         Section("Обзор эфира")

@@ -39,8 +39,12 @@ class Session(
     val demo: Boolean,
     val user: String = "ubnt",
     val http: OkHttpClient? = null,
+    /** Пароль держим только в памяти сессии — нужен для переподключения после смены IP. */
+    val pass: String = "",
     val tools: com.airmaxfield.ui.tools.ToolsController,
     val settings: com.airmaxfield.ui.settings.SettingsController,
+    /** Есть, если вошли с заводским ubnt/ubnt — нужен первый вход. */
+    val firstLogin: com.airmaxfield.ui.setup.FirstLoginController? = null,
 )
 
 sealed interface ConnectState {
@@ -149,7 +153,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 // Сеть выбирается заново на каждом соединении: переживает перезагрузку пушки и
                 // переподключение кабеля, и никогда не уходит в мобильную сеть.
-                val http = deviceHttpClient(BoundSocketFactory { nets.networkFor(h)?.second?.socketFactory })
+                val http = httpFor(h)
                 val client = connect(h, user.trim(), pass, http)
                 if (save) {
                     val existing = _devices.value.firstOrNull { it.host == host.trim() }
@@ -157,7 +161,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         name?.takeIf { it.isNotBlank() } ?: host.trim(), host.trim(), user.trim(), pass))
                     _devices.value = store?.all().orEmpty()
                 }
-                startSession(name?.takeIf { it.isNotBlank() } ?: h, h, client, demo = false, user = user.trim(), http = http)
+                startSession(name?.takeIf { it.isNotBlank() } ?: h, h, client, demo = false, user = user.trim(), http = http, pass = pass,
+                    factory = com.airmaxfield.apply.FirstLogin.isFactoryLogin(user.trim(), pass))
                 _connect.value = ConnectState.Idle
             } catch (e: AirOsError) {
                 _connect.value = ConnectState.Failed(e.message ?: "Ошибка", e is AirOsError.BadCredentials)
@@ -169,9 +174,112 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun demo() = startSession("Демо-режим", "демо", DemoClient(), demo = true)
 
+    /** HTTP-клиент, привязанный к сети телефона, в которой лежит [host]. */
+    private fun httpFor(host: String) = deviceHttpClient(BoundSocketFactory { nets.networkFor(host)?.second?.socketFactory })
+
+    /** Сохраняет конфигурацию в резервные копии перед записью; бросает, если сохранить нельзя. */
+    private fun backupFn(host: String, hostname: () -> String?): suspend (String) -> Unit = { text ->
+        val store = backups ?: error("хранилище резервных копий недоступно")
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            store.save(com.airmaxfield.airos.ConfigBackup.fileName(hostname(), host, java.util.Date()), text)
+        }
+    }
+
+    /** Клиент для нового адреса: подключается при первой удачной попытке и запоминается. */
+    private fun reconnectFn(user: String, pass: String): (String) -> (suspend () -> AirOsClient) = { h ->
+        var cached: AirOsClient? = null
+        val fn: suspend () -> AirOsClient = { cached ?: connect(h, user, pass, httpFor(h)).also { cached = it } }
+        fn
+    }
+
+    private val connector: com.airmaxfield.ui.setup.Connector = { h, u, p -> connect(h, u, p, httpFor(h)) }
+
+    /** Первый вход сохранён: запоминаем новые логин и пароль и переподключаемся с ними. */
+    private fun afterFirstLogin(s: Session, user: String, pass: String) {
+        val saved = _devices.value.firstOrNull { it.host == s.host }
+        if (saved != null) {
+            store?.save(saved.copy(user = user, pass = pass))
+            _devices.value = store?.all().orEmpty()
+        }
+        _toast.value = "Новый логин и пароль сохранены на пушке"
+        connect(s.host, user, pass, save = false, name = s.title)
+    }
+
+    // --- Мастер моста ---
+
+    private val _profiles = MutableStateFlow(store?.profiles().orEmpty())
+    val profiles: StateFlow<List<com.airmaxfield.apply.BridgeProfile>> = _profiles.asStateFlow()
+
+    private val _wizard = MutableStateFlow<com.airmaxfield.ui.setup.BridgeWizardController?>(null)
+    val wizard: StateFlow<com.airmaxfield.ui.setup.BridgeWizardController?> = _wizard.asStateFlow()
+
+    fun openWizard() {
+        closeSession()
+        _wizard.value?.close()
+        _wizard.value = com.airmaxfield.ui.setup.BridgeWizardController(
+            viewModelScope, connector,
+            backup = { host, text -> backupFn(host) { null }(text) },
+            saveDevice = { d -> store?.save(d); _devices.value = store?.all().orEmpty() },
+            saveProfile = { p -> store?.saveProfile(p); _profiles.value = store?.profiles().orEmpty() },
+        )
+    }
+
+    fun closeWizard() { _wizard.value?.close(); _wizard.value = null }
+
+    // --- Изменения на обеих сторонах моста ---
+
+    private val _bothEnds = MutableStateFlow<com.airmaxfield.apply.BothEndsOrchestrator?>(null)
+    val bothEnds: StateFlow<com.airmaxfield.apply.BothEndsOrchestrator?> = _bothEnds.asStateFlow()
+
+    /** Вторая пушка моста для текущей сессии (по pairId сохранённых пушек). */
+    fun pairOf(s: Session): SavedDevice? {
+        val me = _devices.value.firstOrNull { it.host == s.host } ?: return null
+        val pid = me.pairId ?: return null
+        return _devices.value.firstOrNull { it.pairId == pid && it.id != me.id }
+    }
+
+    fun startRelink(s: Session, link: com.airmaxfield.apply.LinkParams) {
+        if (_bothEnds.value != null) return
+        val far = pairOf(s) ?: run { _toast.value = "Эта пушка не связана в пару"; return }
+        viewModelScope.launch {
+            try {
+                val farClient = com.airmaxfield.airos.SerializedClient(connector(far.host, far.user, far.pass))
+                val nearCfg = com.airmaxfield.airos.SystemConfig.parse(s.client.downloadConfig())
+                val farCfg = com.airmaxfield.airos.SystemConfig.parse(farClient.downloadConfig())
+                val P = com.airmaxfield.apply.BridgePlanner
+                val o = com.airmaxfield.apply.BothEndsOrchestrator(
+                    s.client, farClient,
+                    backupNear = { text -> backupFn(s.host) { s.poller.state.value.status?.hostname }(text) },
+                    backupFar = { text -> backupFn(far.host) { far.name }(text) },
+                    scope = viewModelScope,
+                )
+                _bothEnds.value = o
+                o.start(P.relink(nearCfg, P.roleOf(nearCfg), link).raw, P.relink(farCfg, P.roleOf(farCfg), link).raw)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                _toast.value = "Дальняя пушка (${far.host}) не отвечает через мост: ${e.message}"
+            }
+        }
+    }
+
+    fun closeRelink() {
+        _bothEnds.value?.close(); _bothEnds.value = null
+        _session.value?.settings?.load()
+    }
+
+    /** После сохранения новой адресации переходим на новый адрес и обновляем сохранённую пушку. */
+    private fun moveSession(s: Session, newHost: String) {
+        val saved = _devices.value.firstOrNull { it.host == s.host }
+        if (saved != null) {
+            store?.save(saved.copy(host = newHost))
+            _devices.value = store?.all().orEmpty()
+        }
+        _toast.value = "Пушка теперь доступна по адресу $newHost"
+        connect(newHost, s.user, s.pass, save = false, name = s.title.takeIf { it != s.host } ?: newHost)
+    }
+
     private fun startSession(
         title: String, host: String, client: AirOsClient, demo: Boolean,
-        user: String = "ubnt", http: OkHttpClient? = null,
+        user: String = "ubnt", http: OkHttpClient? = null, pass: String = "", factory: Boolean = false,
     ) {
         closeSession()
         val serial = com.airmaxfield.airos.SerializedClient(client)
@@ -179,8 +287,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val tools = com.airmaxfield.ui.tools.ToolsController(
             serial, host, { poller.state.value.status?.hostname }, backups, viewModelScope,
         )
-        val settings = com.airmaxfield.ui.settings.SettingsController(serial, viewModelScope)
-        _session.value = Session(title, host, serial, poller, demo, user, http, tools, settings)
+        val hostname = { poller.state.value.status?.hostname }
+        lateinit var session: Session
+        val settings = com.airmaxfield.ui.settings.SettingsController(
+            serial, viewModelScope, host = host,
+            backup = if (demo) ({ _ -> }) else { text -> backupFn(host, hostname)(text); tools.refreshBackups() },
+            reconnect = if (demo) null else reconnectFn(user, pass),
+            onConfirmed = { newHost -> if (newHost != null) moveSession(session, newHost) },
+        )
+        val firstLogin = if (!factory) null else com.airmaxfield.ui.setup.FirstLoginController(
+            serial, host, connector, { text -> backupFn(host, hostname)(text); tools.refreshBackups() }, viewModelScope,
+            onDone = { u, p -> afterFirstLogin(session, u, p) },
+        )
+        session = Session(title, host, serial, poller, demo, user, http, pass, tools, settings, firstLogin)
+        _session.value = session
         poller.start()
     }
 
@@ -191,6 +311,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             s.poller.stop()
             s.tools.close()
             s.settings.close()
+            s.firstLogin?.close()
             s.http?.let { runCatching { it.connectionPool.evictAll(); it.dispatcher.executorService.shutdown() } }
         }
         _session.value = null
