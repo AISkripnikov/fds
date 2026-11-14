@@ -314,6 +314,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun resumePolling() = _session.value?.poller?.start()
 
     private fun closeSession() {
+        pingJob?.cancel(); _ping.value = PingUi()
         _session.value?.let { s ->
             s.poller.stop()
             s.tools.close()
@@ -391,6 +392,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             s.tools.refreshBackups()
             _toast.value = if (r.isSuccess) "Копия загружена — её можно восстановить" else "Не удалось загрузить: ${r.exceptionOrNull()?.message}"
         }
+    }
+
+    // --- Диагностика: ping и отчёт по линку ---
+
+    data class PingUi(val host: String = "", val running: Boolean = false, val results: List<com.airmaxfield.diag.PingResult> = emptyList())
+
+    private val _ping = MutableStateFlow(PingUi())
+    val ping: StateFlow<PingUi> = _ping.asStateFlow()
+    private var pingJob: kotlinx.coroutines.Job? = null
+
+    fun startPing(host: String, count: Int = 10) {
+        val h = host.trim()
+        if (h.isEmpty()) return
+        pingJob?.cancel()
+        _ping.value = PingUi(h, running = true)
+        val pinger = com.airmaxfield.diag.TcpPing({ nets.networkFor(h)?.second?.socketFactory })
+        pingJob = viewModelScope.launch {
+            try {
+                pinger.run(h, count).collect { r -> _ping.value = _ping.value.copy(results = _ping.value.results + r) }
+            } finally {
+                _ping.value = _ping.value.copy(running = false)
+            }
+        }
+    }
+
+    fun stopPing() { pingJob?.cancel() }
+
+    /** Текст отчёта: эта пушка, вторая сторона моста (если отвечает), последний ping. */
+    suspend fun linkReport(s: Session): String {
+        val far = pairOf(s)
+        val farStatus = far?.let { d ->
+            runCatching {
+                kotlinx.coroutines.withTimeout(8_000) { connector(d.host, d.user, d.pass).status() }
+            }.getOrNull()
+        }
+        val p = _ping.value.takeIf { it.results.isNotEmpty() }
+        val me = _devices.value.firstOrNull { it.host == s.host }
+        return com.airmaxfield.diag.LinkReport.build(
+            com.airmaxfield.diag.LinkReport.Side(me?.name ?: s.title, s.host, s.poller.state.value.status),
+            far?.let { com.airmaxfield.diag.LinkReport.Side(it.name, it.host, farStatus) },
+            p?.let { com.airmaxfield.diag.TcpPing.stats(it.results) },
+            at = java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale("ru")).format(java.util.Date()),
+            appVersion = com.airmaxfield.BuildConfig.VERSION_NAME,
+            pingHost = p?.host,
+        )
     }
 
     fun deleteDevice(id: String) { store?.delete(id); _devices.value = store?.all().orEmpty() }

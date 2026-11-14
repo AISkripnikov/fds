@@ -61,6 +61,7 @@ import com.airmaxfield.ui.status.staleSeconds
 import com.airmaxfield.ui.stations.StationsScreen
 import com.airmaxfield.ui.tools.ToolsScreen
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.airmaxfield.ui.theme.AirmaxTheme
 import com.airmaxfield.ui.theme.LocalAirColors
 
@@ -245,6 +246,42 @@ private fun RestoreFlow(vm: AppViewModel, s: Session, file: java.io.File?, onDon
     )
 }
 
+/** Ping и отчёт по линку. */
+@Composable
+private fun DiagSection(vm: AppViewModel, s: Session) {
+    val ctx = LocalContext.current
+    val ping by vm.ping.collectAsState()
+    val devices by vm.devices.collectAsState()
+    val config by s.settings.config.collectAsState()
+    val far = remember(devices, s) { vm.pairOf(s) }
+    val gw = config?.get("route.1.gateway")?.takeIf { it.isNotBlank() && it != "0.0.0.0" }
+    val targets = listOfNotNull(
+        "Эта пушка" to s.host,
+        far?.let { "Вторая сторона" to it.host },
+        gw?.let { "Шлюз" to it },
+    )
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var reportBusy by remember { mutableStateOf(false) }
+    com.airmaxfield.ui.tools.DiagBlock(
+        targets = targets, pingHost = ping.host, running = ping.running, results = ping.results,
+        canPing = !s.demo, reportBusy = reportBusy,
+        onPing = { vm.startPing(it) }, onStop = vm::stopPing,
+        onReport = {
+            reportBusy = true
+            scope.launch {
+                try {
+                    val text = vm.linkReport(s)
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text)
+                    ctx.startActivity(android.content.Intent.createChooser(send, "Отправить отчёт"))
+                } finally {
+                    reportBusy = false
+                }
+            }
+        },
+    )
+}
+
 /** Блок «Мост» на вкладке инструментов: смена канала на обеих сторонах. */
 @Composable
 private fun PairBlock(vm: AppViewModel, s: Session) {
@@ -376,7 +413,9 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
         var firstLoginSkipped by rememberSaveable(s) { mutableStateOf(false) }
         val fl = s.firstLogin
         if (fl != null && !firstLoginSkipped) {
-            com.airmaxfield.ui.setup.FirstLoginScreen(fl, onSkip = { firstLoginSkipped = true }, modifier = Modifier.padding(pad))
+            val profiles by vm.profiles.collectAsState()
+            com.airmaxfield.ui.setup.FirstLoginScreen(fl, onSkip = { firstLoginSkipped = true }, modifier = Modifier.padding(pad),
+                profiles = profiles)
         } else if (tab == 0) {
             StatusScreen(ui, stale, toneOn, { toneOn = it }, onEditPassword = vm::editCredentials, onSaveDump = { onSaveDump(s) },
                 modifier = Modifier.padding(pad))
@@ -406,7 +445,7 @@ private fun SessionRoot(vm: AppViewModel, s: Session, onSaveDump: (Session) -> U
                 onExport = { f -> exportFile = f; exporter.launch(f.name) },
                 onDelete = s.tools::deleteBackup, onReboot = s.tools::reboot,
                 onRefreshBackups = s.tools::refreshBackups, modifier = Modifier.padding(pad),
-                extra = { PairBlock(vm, s) },
+                extra = { PairBlock(vm, s); DiagSection(vm, s) },
                 onRestore = if (s.settings.writable) ({ f -> restoreFile = f }) else null,
                 onImport = { importer.launch(arrayOf("*/*")) },
             )

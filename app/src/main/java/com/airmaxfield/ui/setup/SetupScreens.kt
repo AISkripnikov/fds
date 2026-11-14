@@ -107,7 +107,12 @@ private fun SingleApplyDialog(sa: SafeApply, confirmedText: String, onClose: () 
 
 /** Первый вход: пушка ещё с заводским паролем ubnt/ubnt. */
 @Composable
-fun FirstLoginScreen(ctrl: FirstLoginController, onSkip: () -> Unit, modifier: Modifier = Modifier) {
+fun FirstLoginScreen(
+    ctrl: FirstLoginController,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+    profiles: List<BridgeProfile> = emptyList(),
+) {
     val errors by ctrl.errors.collectAsState()
     val apply by ctrl.apply.collectAsState()
     var user by rememberSaveable { mutableStateOf("admin") }
@@ -123,6 +128,21 @@ fun FirstLoginScreen(ctrl: FirstLoginController, onSkip: () -> Unit, modifier: M
         Title("Первый вход")
         Hint("Пушка работает с заводским паролем ubnt/ubnt. Задайте свой логин и пароль и страну — " +
             "без этого airOS не даст настраивать радио.")
+        if (profiles.isNotEmpty()) {
+            var pick by remember { mutableStateOf(false) }
+            Column {
+                OutlinedButton(onClick = { pick = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Взять логин, пароль и страну из шаблона моста…")
+                }
+                DropdownMenu(pick, { pick = false }) {
+                    profiles.forEach { p ->
+                        DropdownMenuItem(text = { Text(p.name) }, onClick = {
+                            user = p.user; pass = p.pass; pass2 = p.pass; country = p.countryCode; pick = false
+                        })
+                    }
+                }
+            }
+        }
         Field(user, { user = it }, "Новый логин")
         Field(pass, { pass = it }, "Новый пароль (от 8 символов)", password = true)
         Field(pass2, { pass2 = it }, "Пароль ещё раз", password = true)
