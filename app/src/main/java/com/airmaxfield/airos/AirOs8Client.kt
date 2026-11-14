@@ -74,8 +74,15 @@ class AirOs8Client(
     @Volatile private var lastSurveyRaw: String? = null
 
     override suspend fun survey(): List<SurveyEntry> {
-        val body = fetchOk("/survey.json.cgi?iface=ath0", slowHttp)
-        lastSurveyRaw = body
+        // Ответ запоминаем любой — и ошибку тоже: по нему в дампе видно, что отдаёт прошивка.
+        val r = try {
+            fetch("/survey.json.cgi?iface=ath0", slowHttp)
+        } catch (e: AirOsError) {
+            lastSurveyRaw = "ошибка: ${e.message}"; throw e
+        }
+        lastSurveyRaw = "HTTP ${r.code}\n${r.body}"
+        if (r.code !in 200..299) throw AirOsError.Protocol("обзор эфира: HTTP ${r.code}")
+        val body = r.body
         return withContext(Dispatchers.Default) { SurveyParser.parse(body) }
     }
 

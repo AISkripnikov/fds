@@ -131,4 +131,13 @@ class TestModeClientTest {
         now = 1_000_000
         assertEquals(next, d.downloadConfig())
     }
+
+    @Test fun failed_survey_answer_still_goes_into_dump() = runTest {
+        val c = v8()
+        server.enqueue(MockResponse().setResponseCode(500).setBody("survey busy"))
+        try { c.survey(); fail() } catch (e: AirOsError.Protocol) { }
+        server.enqueue(MockResponse().setBody("{}")) // status.cgi для дампа
+        val dump = c.rawDump()
+        assertEquals("HTTP 500\nsurvey busy", dump["/survey.json.cgi (последний обзор)"])
+    }
 }

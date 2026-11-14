@@ -58,9 +58,7 @@ fun ConnectSheet(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
             subnetWarning(host.trim()).takeIf { host.isNotBlank() }?.let { Text("⚠ $it", color = c.fair, fontSize = 14.sp) }
             OutlinedTextField(user, { user = it }, label = { Text("Логин") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(pass, { pass = it }, label = { Text("Пароль") }, singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+            com.airmaxfield.ui.components.PasswordField(pass, { pass = it }, "Пароль")
             if (canSave) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(save, { save = it }); Text("Сохранить", color = c.text, fontSize = 15.sp)

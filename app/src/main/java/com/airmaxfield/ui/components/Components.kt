@@ -36,6 +36,10 @@ import com.airmaxfield.ui.theme.Quality
 import com.airmaxfield.ui.theme.TileValue
 import com.airmaxfield.ui.theme.color
 import com.airmaxfield.ui.theme.signalQuality
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 
 const val DASH = "—"
 
@@ -149,4 +153,31 @@ fun SignalGraph(history: List<Int>, modifier: Modifier = Modifier) {
 fun StatusDot(ok: Boolean) {
     val c = LocalAirColors.current
     Box(Modifier.size(10.dp).background(if (ok) c.good else c.fair, CircleShape))
+}
+
+/** Поле пароля с «глазом»: можно проверить, что вписано. */
+@androidx.compose.runtime.Composable
+fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+) {
+    var shown by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.material3.OutlinedTextField(
+        value, onValueChange, label = { androidx.compose.material3.Text(label) }, singleLine = true, modifier = modifier,
+        visualTransformation = if (shown) androidx.compose.ui.text.input.VisualTransformation.None
+            else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+        trailingIcon = {
+            androidx.compose.material3.IconButton(onClick = { shown = !shown }) {
+                androidx.compose.material3.Icon(
+                    if (shown) androidx.compose.material.icons.Icons.Filled.VisibilityOff
+                    else androidx.compose.material.icons.Icons.Filled.Visibility,
+                    contentDescription = if (shown) "Скрыть пароль" else "Показать пароль",
+                )
+            }
+        },
+    )
 }

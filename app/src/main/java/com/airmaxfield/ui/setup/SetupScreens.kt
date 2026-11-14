@@ -66,7 +66,7 @@ private fun Errors(errors: List<String>) {
 private fun Field(
     value: String, onChange: (String) -> Unit, label: String,
     password: Boolean = false, number: Boolean = false, modifier: Modifier = Modifier.fillMaxWidth(),
-) = OutlinedTextField(
+) = if (password) com.airmaxfield.ui.components.PasswordField(value, onChange, label, modifier) else OutlinedTextField(
     value, onChange, label = { Text(label) }, singleLine = true, modifier = modifier,
     visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
     keyboardOptions = KeyboardOptions(keyboardType = when {
