@@ -110,14 +110,10 @@ fun SettingsScreen(
             }
 
             else -> {
-                val entries = when (selectedSection) {
-                    0 -> config.wireless
-                    1 -> config.network
-                    2 -> config.advanced
-                    3 -> config.services
-                    4 -> config.system
-                    else -> emptyList()
+                val section = remember(config, selectedSection) {
+                    com.airmaxfield.help.SettingsLayout.section(config, com.airmaxfield.help.SettingsLayout.Tab.entries[selectedSection])
                 }
+                val entries = section.shown
 
                 if (!writable) {
                     Text(
@@ -127,7 +123,7 @@ fun SettingsScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
-                if (entries.isEmpty()) {
+                if (entries.isEmpty() && section.hiddenTechnical.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -140,7 +136,8 @@ fun SettingsScreen(
                     }
                 } else {
                     Box(Modifier.weight(1f)) {
-                        SettingsSection(entries = entries, drafts = drafts, canEdit = canEdit, onEdit = onEdit, onClearDraft = onClearDraft)
+                        SettingsSection(entries = entries, technical = section.hiddenTechnical, config = config,
+                            drafts = drafts, canEdit = canEdit, onEdit = onEdit, onClearDraft = onClearDraft)
                     }
                 }
                 if (drafts.isNotEmpty()) DraftBar(drafts.size, onClearAll, onApply)
@@ -153,6 +150,8 @@ fun SettingsScreen(
 @Composable
 private fun SettingsSection(
     entries: List<CfgEntry>,
+    technical: List<CfgEntry>,
+    config: SystemConfig,
     drafts: Map<String, String>,
     canEdit: (String) -> Boolean,
     onEdit: (String, String) -> Unit,
@@ -160,6 +159,7 @@ private fun SettingsSection(
 ) {
     var helpEntry by remember { mutableStateOf<Pair<CfgEntry, FieldHelp>?>(null) }
     var editing by remember { mutableStateOf<CfgEntry?>(null) }
+    var showTechnical by remember(technical) { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -169,6 +169,7 @@ private fun SettingsSection(
         items(entries) { entry ->
             SettingCard(
                 entry = entry,
+                title = com.airmaxfield.help.SettingsLayout.title(entry.key, config),
                 draft = drafts[entry.key],
                 editable = canEdit(entry.key),
                 onClick = { editing = entry },
@@ -177,11 +178,33 @@ private fun SettingsSection(
                 }
             )
         }
+        if (technical.isNotEmpty()) {
+            item {
+                TextButton(onClick = { showTechnical = !showTechnical }, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        if (showTechnical) "Скрыть служебные параметры"
+                        else "Ещё ${technical.size} служебных параметров без описания — менять обычно не нужно",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (showTechnical) items(technical) { entry ->
+                SettingCard(
+                    entry = entry,
+                    title = entry.key,
+                    draft = drafts[entry.key],
+                    editable = canEdit(entry.key),
+                    onClick = { editing = entry },
+                    onShowHelp = {},
+                )
+            }
+        }
     }
 
     editing?.let { e ->
         EditDialog(
             entry = e,
+            title = com.airmaxfield.help.SettingsLayout.title(e.key, config),
             draft = drafts[e.key],
             onSave = { v -> onEdit(e.key, v); editing = null },
             onRevert = { onClearDraft(e.key); editing = null },
@@ -194,7 +217,7 @@ private fun SettingsSection(
         ModalBottomSheet(
             onDismissRequest = { helpEntry = null }
         ) {
-            HelpSheet(entry = entry, help = help)
+            HelpSheet(title = com.airmaxfield.help.SettingsLayout.title(entry.key, config), help = help)
         }
     }
 }
@@ -202,6 +225,7 @@ private fun SettingsSection(
 @Composable
 private fun SettingCard(
     entry: CfgEntry,
+    title: String,
     draft: String?,
     editable: Boolean,
     onClick: () -> Unit,
@@ -224,7 +248,7 @@ private fun SettingCard(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = com.airmaxfield.help.KeyTitles.titleFor(entry.key),
+                        text = title,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -238,19 +262,10 @@ private fun SettingCard(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = displayValue,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontFamily = if (!isSensitive) FontFamily.Monospace else FontFamily.Default
-                    ),
+                    text = displayValue.ifEmpty { "не задано" },
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (com.airmaxfield.help.KeyTitles.titleFor(entry.key) != entry.key) {
-                    Text(
-                        text = entry.key,
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        color = LocalAirColors.current.muted,
-                    )
-                }
             }
 
             if (help != null) {
@@ -268,7 +283,7 @@ private fun SettingCard(
 
 @Composable
 private fun HelpSheet(
-    entry: CfgEntry,
+    title: String,
     help: FieldHelp,
 ) {
     Column(
@@ -278,17 +293,9 @@ private fun HelpSheet(
             .padding(bottom = 32.dp)
     ) {
         Text(
-            text = help.title,
+            text = title,
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onSurface
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = entry.key,
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -350,6 +357,7 @@ private fun DraftBar(count: Int, onClearAll: () -> Unit, onApply: () -> Unit) {
 @Composable
 private fun EditDialog(
     entry: CfgEntry,
+    title: String,
     draft: String?,
     onSave: (String) -> Unit,
     onRevert: () -> Unit,
@@ -366,10 +374,9 @@ private fun EditDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = c.card,
-        title = { Text(com.airmaxfield.help.KeyTitles.titleFor(entry.key), color = c.text) },
+        title = { Text(title, color = c.text) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(entry.key, fontFamily = FontFamily.Monospace, color = c.muted, style = MaterialTheme.typography.bodySmall)
                 when (type) {
                     is FieldType.Toggle -> Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(if (value == type.on) "Включено" else "Выключено", color = c.text, modifier = Modifier.weight(1f))

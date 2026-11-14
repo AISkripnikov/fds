@@ -45,4 +45,14 @@ class RealLb5acTest {
         assertEquals(298.8, st.txRateMbps!!, 0.01)
         assertEquals(2, st.latencyMs)
     }
+
+    @Test fun survey_from_real_unit() {
+        val e = SurveyParser.parse(fixture("airos8/survey_lb5ac_879.json")).single()
+        assertEquals("TEST-LINK", e.ssid)
+        assertEquals(5810, e.frequencyMhz)
+        assertEquals(162, e.channel)
+        assertEquals(-38, e.signalDbm)
+        assertEquals(-95, e.noiseDbm)
+        assertEquals("wpa2", e.security)
+    }
 }

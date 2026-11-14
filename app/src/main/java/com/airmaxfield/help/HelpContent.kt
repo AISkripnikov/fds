@@ -27,7 +27,10 @@ data class HelpArticle(
  */
 object HelpContent {
 
-    val fields: List<FieldHelp> = listOf(
+    /** Подробная справка: общие поля + все настройки airOS из реальной конфигурации. Первое совпадение выигрывает. */
+    val fields: List<FieldHelp> by lazy { baseFields + AirOsFieldHelp.fields }
+
+    private val baseFields: List<FieldHelp> = listOf(
         // Беспроводная сеть
         FieldHelp(
             key = "radio.*.freq",

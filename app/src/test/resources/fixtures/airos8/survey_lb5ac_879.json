@@ -1,0 +1,29 @@
+{
+	"scan_status" : "completed",
+	"scan_data" : [
+	{
+		"cell" : "1",
+		"mac" : "24:5A:4C:00:10:01",
+		"mode" : "Master",
+		"frequency" : "5.81",
+		"channel" : "162",
+		"center1" : "5820",
+		"chanbw" : "40",
+		"quality" : "58/94",
+		"signal_level" : "-38",
+		"noise_level" : "-95",
+		"encryption" : "wpa2",
+		"essid" : "TEST-LINK",
+		"pairwise_ciphers" : "CCMP",
+		"group_cipher" : "CCMP",
+		"auth_suites" : "PSK",
+		"htcap" : 0,
+		"airmax_ie" : "enabled",
+		"airmax_mode" : "ptmp",
+		"connected_clients" : "",
+		"max_clients" : "",
+		"ieee_mode" : "802.11ac",
+		"hostname" : "LiteBeam 5AC"
+	}
+]
+}
